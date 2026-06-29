@@ -57,14 +57,9 @@ skills/                           # repo root
 ```
 
 ## Develop locally
-```sh
-python -m pip install pre-commit ruff pytest && pre-commit install
-python scripts/validate_skills.py             # validate every skill (and the template)
-cd skills/<name> && python -m pytest -q       # run one skill's test suite
-pre-commit run --all-files
-```
-Skills target Python 3.12+ and prefer the standard library. To author a new skill,
-start from `template/` and read **CONTRIBUTING.md** and **AGENTS.md**.
+Skills target Python 3.12+ and prefer the standard library. To author a skill and run
+the dev loop (set up, validate → test → lint), see **CONTRIBUTING.md**; for the rules,
+see **AGENTS.md**.
 
 This README is orientation only — it does not restate any skill's mechanics. Each
 `SKILL.md` is the source of truth for its own skill.

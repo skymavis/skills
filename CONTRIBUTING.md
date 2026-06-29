@@ -49,8 +49,8 @@ python scripts/validate_skills.py skills/<your-skill>/SKILL.md
 
 ## Optional: a CI-safe check
 If your skill ships a tool with a stale/lint/validation check (the model is
-`decision-records`' `decisions.py check`), document the command so it can be wired
-into `.pre-commit-config.yaml` and CI.
+`decisions.py check` from `decision-records`), document the command so it can be
+wired into `.pre-commit-config.yaml` and CI.
 
 ## Local dev loop (in order)
 ```sh
@@ -58,8 +58,9 @@ python scripts/validate_skills.py        # 1. contract
 cd skills/<name> && python -m pytest -q   # 2. tests
 pre-commit run --all-files                # 3. lint/format/hooks
 ```
-CI runs the same validator over every skill and the touched skill's pytest suite,
-so green locally means green in CI.
+Run with no path, `validate_skills.py` checks every skill and the template. CI runs
+the same validator over every skill and the touched skill's pytest suite, so green
+locally means green in CI.
 
 ## Commits
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org)
