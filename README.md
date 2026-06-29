@@ -22,26 +22,34 @@ needed. See the
 
 ## Using a skill
 
-Add a skill to your agent with the [`skills` CLI](https://github.com/vercel-labs/skills) — no clone
-needed:
+Two steps: install the skill into your agent, then (for `decision-records`) adopt it in a repo.
+
+### 1. Install it
+
+Use the [`skills` CLI](https://github.com/vercel-labs/skills) — no clone needed. Choose
+project-local or global, and pass each agent you use with `-a`:
 
 ```sh
-# project-local (committed with the repo); pass each agent you use
+# project-local (committed with the repo)
 npx skills add skymavis/skills@decision-records -a claude-code -a codex
 
-# or global, available across all your projects
+# global — available across all your projects
 npx skills add skymavis/skills@decision-records -g -a claude-code
 ```
 
-This installs into each agent's skills directory (`.claude/skills/` for Claude Code,
-`.agents/skills/` for Codex; `~/…` with `-g`) — see the
+This drops the skill into each agent's skills directory — `.claude/skills/` for Claude Code,
+`.agents/skills/` for Codex (`~/…` with `-g`). See the
 [supported-agents table](https://github.com/vercel-labs/skills#supported-agents) for the exact path
-per agent. Reload skills in your agent to pick it up. (Or just point an agent harness at
-`skills/<name>/`, or copy that folder into a project's `.claude/skills/`.)
+per agent, then reload skills in your agent to pick it up.
 
-`decision-records` then ships an adopt-in-a-repo flow. The easiest way: **ask your agent to "set up
-decision records in this repo"** — it knows where its own skill scripts live. Or run the bundled
-tool by hand from the repo you want to track decisions in:
+> No CLI? Point an agent harness straight at `skills/<name>/`, or copy that folder into a project's
+> `.claude/skills/`.
+
+### 2. Adopt it in a repo
+
+`decision-records` tracks decisions inside whatever repo you point it at. The easiest way: **ask
+your agent to "set up decision records in this repo"** — it knows where its own skill scripts live.
+Or run the bundled tool by hand from the repo you want to track:
 
 ```sh
 python <skills-dir>/decision-records/scripts/decisions.py install   # <skills-dir> = your agent's, e.g. .claude/skills
@@ -67,7 +75,8 @@ skills/                           # repo root
 ## Develop locally
 
 Skills target Python 3.12+ and prefer the standard library. To author a skill and run the dev loop
-(set up, validate → test → lint), see **CONTRIBUTING.md**; for the rules, see **AGENTS.md**.
+(set up, validate → test → lint), see [CONTRIBUTING.md](CONTRIBUTING.md); for the rules, see
+[AGENTS.md](AGENTS.md).
 
 This README is orientation only — it does not restate any skill's mechanics. Each `SKILL.md` is the
 source of truth for its own skill.
