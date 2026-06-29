@@ -34,7 +34,7 @@ artifacts the skill produces.
 Allowed keys only: `name`, `description`, `license`, `allowed-tools`, `metadata`,
 `compatibility`. `name` + `description` required. `name` must be kebab-case, ≤ 64
 chars, and equal the folder name. Run the validator on your skill:
-```
+```sh
 python scripts/validate_skills.py skills/<your-skill>/SKILL.md
 ```
 
@@ -53,7 +53,7 @@ If your skill ships a tool with a stale/lint/validation check (the model is
 into `.pre-commit-config.yaml` and CI.
 
 ## Local dev loop (in order)
-```
+```sh
 python scripts/validate_skills.py        # 1. contract
 cd skills/<name> && python -m pytest -q   # 2. tests
 pre-commit run --all-files                # 3. lint/format/hooks

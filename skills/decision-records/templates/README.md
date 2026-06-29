@@ -65,7 +65,7 @@ being replaced.
 `scripts/decisions.py` generates the index and cross-links, validates the tree, and
 promotes drafts:
 
-```
+```sh
 python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+ refresh links)
 python scripts/decisions.py check                       # validate (CI-safe; exit 1 if stale)
 python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> accepted/

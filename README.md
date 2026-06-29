@@ -21,7 +21,7 @@ agent loads the lean body first and pulls in depth only when needed. See the
 ## Using a skill
 Add a skill to your agent with the [`skills` CLI](https://github.com/vercel-labs/skills)
 — no clone needed:
-```
+```sh
 # project-local (committed with the repo); pass each agent you use
 npx skills add skymavis/skills@decision-records -a claude-code -a codex
 
@@ -37,7 +37,7 @@ path per agent. Reload skills in your agent to pick it up. (Or just point an age
 `decision-records` then ships an adopt-in-a-repo flow. The easiest way: **ask your agent to "set up
 decision records in this repo"** — it knows where its own skill scripts live. Or run the bundled tool
 by hand from the repo you want to track decisions in:
-```
+```sh
 python <skills-dir>/decision-records/scripts/decisions.py install   # <skills-dir> = your agent's, e.g. .claude/skills
 ```
 It scaffolds `docs/decisions/`, generates the index, adds a pre-commit check, and drops a
@@ -57,7 +57,7 @@ skills/                           # repo root
 ```
 
 ## Develop locally
-```
+```sh
 python -m pip install pre-commit ruff pytest && pre-commit install
 python scripts/validate_skills.py             # validate every skill (and the template)
 cd skills/<name> && python -m pytest -q       # run one skill's test suite

@@ -14,7 +14,7 @@ This skill owns the registry tool `decisions.py`, symlinked into the repo at `sc
 (run `decisions.py install` to set up the symlink + a CI check). The tool finds the repo's `docs/`
 by walking up from the CWD, so run it from anywhere in the repo:
 
-```
+```sh
 python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+ refresh links)
 python scripts/decisions.py check                       # validate (CI-safe; exit 1 if stale)
 python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> accepted/
