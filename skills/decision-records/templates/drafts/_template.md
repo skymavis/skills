@@ -12,37 +12,46 @@ deciders: [trung]
 summary: One sentence describing the decision.
 tags: []                          # e.g. [access-control, retrieval, orchestrator]
 relates_to: []                    # related record ids — counters and/or draft ids
-supersedes: null                  # a decision this replaces, or null
-superseded_by: null               # id that replaces this, or null
+supersedes:                       # a decision this replaces, or blank
+superseded_by:                    # id that replaces this, or blank
 ---
 
 # {id} — {title}
 
 ## Context
-What forces are at play? What problem or tension prompts this decision? State the
-constraints as they actually are. Don't sanitize.
+
+What forces are at play? What problem or tension prompts this decision? State the constraints as
+they actually are. Don't sanitize.
 
 ## Decision
-The proposed decision in one or two sentences, active voice ("We will …"). Binding
-and immutable once promoted and `accepted`.
+
+The proposed decision in one or two sentences, active voice ("We will …"). Binding and immutable
+once promoted and `accepted`.
 
 ## Rationale
+
 Why this option over the others, given the context above.
 
 ## Alternatives considered
+
 | Option | Why not |
-|:-------|:--------|
+| :----- | :------ |
 | …      | …       |
 
 ## Consequences
+
 **Positive**
+
 - …
 
 **Negative / accepted costs**
+
 - …
 
 **Risks & open questions**
+
 - …
 
 ## References
+
 - Threads, specs, external sources, and related records by id (e.g. `0001`, `TIER`).

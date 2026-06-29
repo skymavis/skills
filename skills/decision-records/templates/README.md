@@ -1,14 +1,12 @@
 # Decision records
 
-This repo records significant decisions as short, numbered, immutable documents
-(ADR-style). Everything lives under `docs/decisions/`, so nothing here is confused
-with the repo's other docs.
+This repo records significant decisions as short, numbered, immutable documents (ADR-style).
+Everything lives under `docs/decisions/`, so nothing here is confused with the repo's other docs.
 
 ## Working with an agent (the easy way)
 
-If you use an agent that has the **decision-records** skill installed, just ask — it
-knows the lifecycle, mints ids, runs the tool, and keeps the index and links correct.
-For example:
+If you use an agent that has the **decision-records** skill installed, just ask — it knows the
+lifecycle, mints ids, runs the tool, and keeps the index and links correct. For example:
 
 - "Capture what we just discussed into a decision draft."
 - "Draft an architecture decision: we'll use X for Y."
@@ -29,41 +27,37 @@ A decision moves through three stages, one directory each:
 | Accepted | `accepted/<type>/` | a zero-padded counter (0001, 0002, …) | a finalized, **immutable** decision           |
 | Retired  | `archived/`        | (keeps its counter)                   | superseded or deprecated; kept for the record |
 
-There is no "proposed" stage — *proposing* a decision is the act of opening a pull
-request that promotes a draft. Once a draft lands in `accepted/`, it is immutable:
-you don't edit it, you supersede it with a newer decision. `<type>` is an open
-lowercase label you choose (architecture, product, security, policy, legal, …); each
-type is its own subdirectory under `accepted/`.
+There is no "proposed" stage — *proposing* a decision is the act of opening a pull request that
+promotes a draft. Once a draft lands in `accepted/`, it is immutable: you don't edit it, you
+supersede it with a newer decision. `<type>` is an open lowercase label you choose (architecture,
+product, security, policy, legal, …); each type is its own subdirectory under `accepted/`.
 
 ## Reading the records
 
-Start at [INDEX.md](./INDEX.md) — a generated table of every accepted and retired
-decision with its type, summary, status, and tags. Open the records you need; skip
-`archived/` unless you're tracing why a decision changed.
+Start at [INDEX.md](./INDEX.md) — a generated table of every accepted and retired decision with its
+type, summary, status, and tags. Open the records you need; skip `archived/` unless you're tracing
+why a decision changed.
 
 ## Authoring & cross-referencing
 
-- Copy `_template.md` for a decision, or `drafts/_template.md` for a draft, and fill
-  it in.
-- Mint a draft's 4-letter id yourself (a mnemonic of the topic). Accepted records get
-  the next global counter automatically when a draft is promoted.
-- Refer to another record by writing its id inline — the tooling renders ids as links
-  and keeps them correct when files move. Never hand-write a path to a record.
+- Copy `_template.md` for a decision, or `drafts/_template.md` for a draft, and fill it in.
+- Mint a draft's 4-letter id yourself (a mnemonic of the topic). Accepted records get the next
+  global counter automatically when a draft is promoted.
+- Refer to another record by writing its id inline — the tooling renders ids as links and keeps them
+  correct when files move. Never hand-write a path to a record.
 
 ## Promotion & superseding
 
-Promotion turns a draft into the next accepted decision; it is a finalizing step that
-needs human sign-off. To replace an existing decision, set the draft's `supersedes`
-front-matter to that decision's counter. On promotion (confirmed with
-`--allow-replace`) the tool **automatically retires the superseded record for you** —
-it moves the old record to `archived/`, flips its status to `superseded`, and records
-the new counter in the old record's `superseded_by`. You never hand-edit the record
-being replaced.
+Promotion turns a draft into the next accepted decision; it is a finalizing step that needs human
+sign-off. To replace an existing decision, set the draft's `supersedes` front-matter to that
+decision's counter. On promotion (confirmed with `--allow-replace`) the tool **automatically retires
+the superseded record for you** — it moves the old record to `archived/`, flips its status to
+`superseded`, and records the new counter in the old record's `superseded_by`. You never hand-edit
+the record being replaced.
 
 ## The tooling
 
-`scripts/decisions.py` generates the index and cross-links, validates the tree, and
-promotes drafts:
+`scripts/decisions.py` generates the index and cross-links, validates the tree, and promotes drafts:
 
 ```sh
 python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+ refresh links)
@@ -73,6 +67,6 @@ python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-i
 python scripts/decisions.py install [repo]              # adopt in a repo: symlink + pre-commit
 ```
 
-Run `python scripts/decisions.py --help` for the rest. This convention is provided by
-the **decision-records** skill, which is the source of truth for how the tooling
-behaves; this file is a local orientation guide.
+Run `python scripts/decisions.py --help` for the rest. This convention is provided by the
+**decision-records** skill, which is the source of truth for how the tooling behaves; this file is a
+local orientation guide.

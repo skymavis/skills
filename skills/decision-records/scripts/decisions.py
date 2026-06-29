@@ -145,11 +145,12 @@ def split_front_matter(text: str) -> tuple[str, str]:
 
 def set_field(text: str, key: str, value: str) -> str:
     head, body = split_front_matter(text)
+    line = f"{key}: {value}" if value != "" else f"{key}:"  # empty -> no trailing space
     pat = re.compile(rf"^{re.escape(key)}:.*$", re.M)
     if pat.search(head):
-        head = pat.sub(f"{key}: {value}", head, count=1)
+        head = pat.sub(lambda _: line, head, count=1)
     else:
-        head = head[:-4] + f"{key}: {value}\n---\n"
+        head = head[:-4] + line + "\n---\n"
     return head + body
 
 
@@ -532,7 +533,7 @@ def remove_from_list_field(text: str, key: str, value: str) -> str:
         items = [i for i in items if i != value]
         return set_field(text, key, "[" + ", ".join(f'"{i}"' for i in items) + "]")
     if cur.strip('"').strip("'") == value:
-        return set_field(text, key, "null")
+        return set_field(text, key, "")  # blank, not null (mdformat-stable; reads the same)
     return text
 
 
@@ -627,7 +628,7 @@ def _do_deref(by_id: dict, seeds: set, mapping: dict) -> None:
             touched.add(t)
         if d.get("superseded_by") in draft_ids and d.get("superseded_by") not in seeds:
             t = d["superseded_by"]
-            d["_text"] = set_field(d["_text"], "superseded_by", "null")
+            d["_text"] = set_field(d["_text"], "superseded_by", "")  # blank, not null
             by_id[t]["_text"] = add_to_list_field(by_id[t]["_text"], "supersedes", nid)
             touched.add(t)
     for t in touched:

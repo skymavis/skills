@@ -1,7 +1,7 @@
 ## What / why
 
-
 ## Checklist
+
 - [ ] `python scripts/validate_skills.py` passes for all skills
 - [ ] The touched skill's `python -m pytest -q` passes
 - [ ] New or changed behavior has a test
