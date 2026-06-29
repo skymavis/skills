@@ -1,4 +1,6 @@
 # Local enforcement mirrors CI. Install with: pre-commit install
+# (installs both the pre-commit and commit-msg hook stages — see below).
+default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
@@ -29,3 +31,9 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+  # Commit-message contract (Conventional Commits + 72-col body). Runs at the
+  # commit-msg stage; config lives in .gitlint. Keep this rev == the CI pin.
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint

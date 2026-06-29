@@ -1,0 +1,27 @@
+# Commit-message contract. Enforced locally by the gitlint commit-msg hook
+# (.pre-commit-config.yaml) and in CI on every PR. Check-only: unlike SKILL.md
+# (mdformat), commit messages have no safe autoformatter — there's no grammar to
+# tell a reflowable body line from a trailer/URL/code — so malformed messages are
+# rejected for the author to fix, not rewritten.
+#
+# Escape hatch for the rare unbreakable line (a long URL in the body): add a
+# footer line `gitlint-ignore: B1` to that commit to skip the body-length rule.
+[general]
+# Conventional Commits subject: `type(scope): summary`
+contrib=contrib-title-conventional-commits
+# Don't lint machine-made or merge commits
+ignore-merge-commits=true
+ignore-fixup-commits=true
+ignore-squash-commits=true
+ignore-revert-commits=true
+# Subject-only commits are allowed (don't require a body)
+ignore=body-is-missing
+
+[title-max-length]
+line-length=72
+
+[body-max-line-length]
+line-length=72
+
+[contrib-title-conventional-commits]
+types=feat,fix,chore,docs,refactor,test,ci,build,perf,style,revert

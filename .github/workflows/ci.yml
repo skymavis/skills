@@ -20,3 +20,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip pre-commit
           pre-commit run --all-files --show-diff-on-failure
+
+  commits:
+    # Lint a PR's own commit messages (Conventional Commits + 72-col body).
+    # Config in .gitlint; pin == the gitlint rev in .pre-commit-config.yaml.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lint commit messages (gitlint)
+        run: |
+          python -m pip install --upgrade pip gitlint==0.19.1
+          base="${{ github.event.pull_request.base.sha }}"
+          gitlint --commits "$base..HEAD"
