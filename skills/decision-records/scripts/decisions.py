@@ -417,10 +417,14 @@ tracing why a decision changed. Records are immutable once `accepted`.
 {rows}
 
 ## Layout
-Everything lives under `docs/decisions/`: `accepted/<type>/` holds accepted numbered records
-(one subdir per type); `archived/` holds retired ones (flat); `drafts/` holds 4-letter WIP
-candidates (flat, not indexed). Moving a record — reclassify, or retire into `archived/` — is
-safe: ids are canonical and the generated links self-heal on `build --relink`.
+Everything lives under `docs/decisions/`:
+
+- `accepted/<type>/`: accepted numbered records, one subdir per type.
+- `archived/`: retired records (superseded/deprecated), flat.
+- `drafts/`: 4-letter WIP candidates, flat and not indexed.
+
+Moving a record never breaks references, whether you reclassify it or retire it into `archived/`.
+Records are keyed by id, not path, and `build --relink` refreshes the generated links.
 """
 
 
