@@ -19,11 +19,29 @@ agent loads the lean body first and pulls in depth only when needed. See the
 *Adding a skill? Add a row here — this catalog is maintained by hand.*
 
 ## Using a skill
-- Point an agent harness at `skills/<name>/`, or copy that folder into a project's
-  `.claude/skills/`.
-- `decision-records` additionally ships an adopt-in-a-repo flow:
-  `python skills/decision-records/scripts/decisions.py install <repo>` symlinks the
-  tool into the target repo and sets up a pre-commit check.
+Add a skill to your agent with the [`skills` CLI](https://github.com/vercel-labs/skills)
+— no clone needed:
+```
+# project-local (committed with the repo); pass each agent you use
+npx skills add skymavis/skills@decision-records -a claude-code -a codex
+
+# or global, available across all your projects
+npx skills add skymavis/skills@decision-records -g -a claude-code
+```
+This installs into each agent's skills directory (`.claude/skills/` for Claude Code,
+`.agents/skills/` for Codex; `~/…` with `-g`) — see the
+[supported-agents table](https://github.com/vercel-labs/skills#supported-agents) for the exact
+path per agent. Reload skills in your agent to pick it up. (Or just point an agent harness at
+`skills/<name>/`, or copy that folder into a project's `.claude/skills/`.)
+
+`decision-records` then ships an adopt-in-a-repo flow. The easiest way: **ask your agent to "set up
+decision records in this repo"** — it knows where its own skill scripts live. Or run the bundled tool
+by hand from the repo you want to track decisions in:
+```
+python <skills-dir>/decision-records/scripts/decisions.py install   # <skills-dir> = your agent's, e.g. .claude/skills
+```
+It scaffolds `docs/decisions/`, generates the index, adds a pre-commit check, and drops a
+human `README.md` + an agent-facing `AGENTS.md` so the repo (and its agents) know the convention.
 
 ## Layout
 ```
@@ -41,7 +59,7 @@ skills/                           # repo root
 ## Develop locally
 ```
 python -m pip install pre-commit ruff pytest && pre-commit install
-python scripts/validate_skills.py            # validate every skill (and the template)
+python scripts/validate_skills.py             # validate every skill (and the template)
 cd skills/<name> && python -m pytest -q       # run one skill's test suite
 pre-commit run --all-files
 ```
