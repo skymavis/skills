@@ -14,12 +14,16 @@ agent loads the lean body first and pulls in depth only when needed. See the
 ## Catalog
 | Skill | What it does | Docs |
 |:------|:-------------|:-----|
+| `decision-records` | Draft, promote, archive, and supersede ADR-style decision records; keeps `INDEX.md` and cross-links generated and validated via `scripts/decisions.py`. | [SKILL.md](skills/decision-records/SKILL.md) |
 
 *Adding a skill? Add a row here — this catalog is maintained by hand.*
 
 ## Using a skill
 - Point an agent harness at `skills/<name>/`, or copy that folder into a project's
   `.claude/skills/`.
+- `decision-records` additionally ships an adopt-in-a-repo flow:
+  `python skills/decision-records/scripts/decisions.py install <repo>` symlinks the
+  tool into the target repo and sets up a pre-commit check.
 
 ## Layout
 ```
@@ -30,7 +34,8 @@ skills/                           # repo root
 ├── scripts/validate_skills.py    # the SKILL.md contract validator (source of truth)
 ├── template/skill-name/          # copy this to start a new skill
 ├── .github/workflows/ci.yml      # validate all skills + per-skill pytest matrix
-└── skills/                       # skills live here — one self-contained folder each
+└── skills/
+    └── decision-records/         # a skill: SKILL.md + scripts/ + references/ + templates/ + tests/
 ```
 
 ## Develop locally
