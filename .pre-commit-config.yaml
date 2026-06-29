@@ -2,6 +2,14 @@
 # (installs both the pre-commit and commit-msg hook stages — see below).
 default_install_hook_types: [pre-commit, commit-msg]
 repos:
+  - repo: local
+    hooks:
+      - id: validate-skills
+        name: validate SKILL.md contracts
+        entry: python scripts/validate_skills.py
+        language: system
+        pass_filenames: false
+        files: 'SKILL\.md$'
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
     hooks:

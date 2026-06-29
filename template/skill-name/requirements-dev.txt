@@ -1,0 +1,3 @@
+# Per-skill test/dev deps. CI always installs pytest; list anything else your
+# tests need here. Prefer the standard library — keep this minimal or delete.
+pytest
