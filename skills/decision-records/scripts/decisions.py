@@ -385,8 +385,8 @@ def render_index(recs: list[dict], root: Path) -> str:
     base = decisions_dir(root)  # INDEX.md lives here; links are relative to it
     rows = (
         "\n".join(
-            f"| [{r['id']}]({rel(r['_path'], base)}) | {r.get('type','')} | {r.get('summary','')} "
-            f"| {STATUS_ICON.get(r.get('status',''), '—')} | {', '.join(r.get('tags') or [])} |"
+            f"| [{r['id']}]({rel(r['_path'], base)}) | {r.get('type', '')} | {r.get('summary', '')}"
+            f" | {STATUS_ICON.get(r.get('status', ''), '—')} | {', '.join(r.get('tags') or [])} |"
             for r in recs
         )
         or "| _none_ | | _no decisions yet — promote a draft_ | | |"
@@ -475,7 +475,7 @@ def match_drafts(root: Path, query: str) -> list[Path]:
     hits = []
     for p in drafts:
         fm = parse_front_matter(p.read_text(encoding="utf-8"))
-        hay = f"{fm.get('id','')} {fm.get('title','')} {p.stem}".lower()
+        hay = f"{fm.get('id', '')} {fm.get('title', '')} {p.stem}".lower()
         if q in hay:
             hits.append(p)
     if not hits:
