@@ -1,31 +1,34 @@
 #!/usr/bin/env python3
 """
-Decision-records registry tool — generate docs/INDEX.md and the cross-reference
+Decision-records registry tool — generate docs/decisions/INDEX.md and the cross-reference
 path links across the docs tree, validate it, mint draft ids, and promote a draft
 into a numbered decision.
 
-Repository layout:
+Repository layout — everything the convention owns lives under docs/decisions/:
 
     docs/
-      INDEX.md                      # GENERATED registry over decisions/ + archived/
-      _template.md                  # decision-record template (numbered)
-      threat-model.md               # living doc; cross-references decisions
-      decisions/                    # ACCEPTED numbered decisions
-        architecture/  product/  security/     # one subdir per type (alphabetical)
-      archived/                     # RETIRED numbered decisions (superseded | deprecated) — flat
-      drafts/                       # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
-        _template.md
+      decisions/                    # the convention's namespace (the umbrella)
+        INDEX.md                    # GENERATED registry over accepted/ + archived/
+        README.md                   # human guide to the convention (scaffolded by install)
+        AGENTS.md                   # agent rules: decisions are binding (scaffolded by install)
+        _template.md                # decision-record template (numbered)
+        accepted/                   # ACCEPTED numbered decisions
+          architecture/  product/  security/   # one subdir per type (alphabetical)
+        archived/                   # RETIRED numbered decisions (superseded | deprecated) — flat
+        drafts/                     # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
+          _template.md
+      threat-model.md               # other repo docs stay siblings; still cross-ref decisions
 
 Lifecycle (there is NO "proposed" status — proposing is the *act* of opening a PR):
-  drafts/<AAAA-title>.md
-    --(promote: a PR assigns the next counter)--> decisions/<type>/NNNN-title.md (accepted)
-  decisions/<type>/NNNN   --(supersede/deprecate)-->  archived/NNNN-title.md
+  decisions/drafts/<AAAA-title>.md
+    --(promote: a PR assigns the next counter)--> decisions/accepted/<type>/NNNN-title.md (accepted)
+  decisions/accepted/<type>/NNNN   --(supersede/deprecate)-->  decisions/archived/NNNN-title.md
 
 Conventions this tool encodes and enforces:
   * Identity is the global counter `id` (`0001`, …) for decisions; a 4-UPPERCASE-letter
     id (`CONF`) for drafts — mint a mnemonic of the draft's topic; `check` enforces
     format + uniqueness. Permanent and canonical; the only thing cross-refs use.
-  * `type` is any lowercase slug — the set is OPEN; your decisions/<type>/ subdirs are the
+  * `type` is any lowercase slug — the set is OPEN; your accepted/<type>/ subdirs are the
     suggested set (architecture/product/security, or policy/legal/finance for governance).
     It lives in front-matter and, for a decision, equals its directory. `status` -> lifecycle.
   * Cross-reference by writing the bare id as inline code — `0006` or `CONF`. NEVER
@@ -36,11 +39,13 @@ Conventions this tool encodes and enforces:
   * INDEX.md and every path link are GENERATED build artifacts.
 
 Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft ids are 4 UPPERCASE letters):
-    python scripts/decisions.py build                 # write docs/INDEX.md
+    python scripts/decisions.py build                  # write docs/decisions/INDEX.md
     python scripts/decisions.py build --relink         # also refresh path links everywhere
     python scripts/decisions.py check                  # validate only; exit 1 if stale (CI)
     python scripts/decisions.py rename-draft-id <name> <NEW>   # re-id a draft, repoint refs
-    python scripts/decisions.py promote <name> [name...]       # promote draft(s) -> decisions/
+    python scripts/decisions.py promote CONF [TIER ...]        # promote draft(s) -> accepted/
+    python scripts/decisions.py promote CONF --deref           # invert refs, promote alone
+    python scripts/decisions.py promote CONF --allow-replace   # also archive what it supersedes
     python scripts/decisions.py install [repo]                 # symlink the tool + add CI check
 """
 
@@ -60,17 +65,17 @@ def find_docs(start: Path | None = None) -> Path:
     path relative to this file for the unusual case of no match."""
     cur = (start or Path.cwd()).resolve()
     for p in (cur, *cur.parents):
-        if (p / "docs" / "decisions").is_dir() or (p / "docs" / "drafts").is_dir():
+        if (p / "docs" / "decisions").is_dir():
             return p / "docs"
     return Path(__file__).resolve().parent.parent / "docs"
 
 
-# A type is any lowercase slug — the set is OPEN. The repo's decisions/<type>/ subdirs are
+# A type is any lowercase slug — the set is OPEN. The repo's accepted/<type>/ subdirs are
 # the suggested set (e.g. architecture, product, security; or policy, legal, finance,
 # people, compliance, operations for governance repos). New types create their dir on promotion.
 TYPE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
-ACTIVE_STATUS = {"accepted"}  # -> decisions/
-RETIRED_STATUS = {"superseded", "deprecated"}  # -> archived/
+ACTIVE_STATUS = {"accepted"}  # -> decisions/accepted/
+RETIRED_STATUS = {"superseded", "deprecated"}  # -> decisions/archived/
 
 RECORD_RE = re.compile(r"^\d{4}-.+\.md$")  # NNNN-kebab-title.md (decisions, archived)
 DRAFT_ID_RE = re.compile(r"^[A-Z]{4}$")  # 4-uppercase-letter draft id
@@ -81,6 +86,30 @@ LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 LABEL_ID_RE = re.compile(r"`?(\d{4}|[A-Z]{4})`?$")  # link label that is just an id
 FILE_ID_RE = re.compile(r"^(\d{4}|[A-Z]{4})-")  # leading id in a filename
 STATUS_ICON = {"accepted": "🟢", "deprecated": "⚪", "superseded": "🔵"}
+
+
+# ── layout ──────────────────────────────────────────────────────────────────
+# Everything the convention owns nests under docs/decisions/ (the umbrella) so the three
+# lifecycle dirs and the INDEX never collide with the repo's other docs/. `root` is docs/;
+# other repo docs (threat-model.md, …) stay its direct children and keep their auto-links.
+def decisions_dir(root: Path) -> Path:
+    return root / "decisions"
+
+
+def accepted_dir(root: Path) -> Path:
+    return root / "decisions" / "accepted"
+
+
+def archived_dir(root: Path) -> Path:
+    return root / "decisions" / "archived"
+
+
+def drafts_dir(root: Path) -> Path:
+    return root / "decisions" / "drafts"
+
+
+def index_path(root: Path) -> Path:
+    return root / "decisions" / "INDEX.md"
 
 
 # ── parsing ─────────────────────────────────────────────────────────────────
@@ -138,12 +167,12 @@ def _meta(p: Path, **extra) -> dict:
 
 
 def load_records(root: Path) -> list[dict]:
-    """Numbered records: decisions/<type>/*.md (typed) and archived/*.md (flat)."""
+    """Numbered records: accepted/<type>/*.md (typed) and archived/*.md (flat)."""
     recs = []
-    for p in sorted((root / "decisions").rglob("*.md")):
+    for p in sorted(accepted_dir(root).rglob("*.md")):
         if RECORD_RE.match(p.name):
             recs.append(_meta(p, _lifecycle="decisions", _typedir=p.parent.name))
-    base = root / "archived"
+    base = archived_dir(root)
     if base.exists():
         for p in sorted(base.glob("*.md")):
             if RECORD_RE.match(p.name):
@@ -152,7 +181,7 @@ def load_records(root: Path) -> list[dict]:
 
 
 def load_drafts(root: Path) -> list[dict]:
-    base = root / "drafts"
+    base = drafts_dir(root)
     return (
         [_meta(p) for p in sorted(base.glob("*.md")) if not p.name.startswith("_")]
         if base.exists()
@@ -218,7 +247,7 @@ def check_links(root: Path, recs: list[dict], drafts: list[dict], refs: dict) ->
     files = [
         (p.name, p, p.read_text(encoding="utf-8")) for p, _ in reference_targets(root, recs, drafts)
     ]
-    index = root / "INDEX.md"
+    index = index_path(root)
     if index.exists():
         files.append((index.name, index, index.read_text(encoding="utf-8")))
     for name, path, text in files:
@@ -255,11 +284,11 @@ def validate_records(recs: list[dict], refs: dict) -> list[str]:
                 errs.append(f"{r['_file']}: type {r.get('type')!r} must be a lowercase slug")
             elif r["_typedir"] != r.get("type"):
                 errs.append(
-                    f"{r['_file']}: in decisions/{r['_typedir']}/ but type is {r.get('type')}"
+                    f"{r['_file']}: in accepted/{r['_typedir']}/ but type is {r.get('type')}"
                 )
             if r.get("status") not in ACTIVE_STATUS:
                 errs.append(
-                    f"{r['_file']}: in decisions/ but status {r.get('status')} is not accepted"
+                    f"{r['_file']}: in accepted/ but status {r.get('status')} is not accepted"
                 )
         elif r.get("status") not in RETIRED_STATUS:
             errs.append(f"{r['_file']}: in archived/ but status {r.get('status')} is not retired")
@@ -294,12 +323,12 @@ def validate_drafts(root: Path, refs: dict, drafts: list[dict]) -> list[str]:
 
 
 def warn_unknown_types(root: Path, drafts: list[dict]) -> list[str]:
-    """Non-blocking: a draft whose type has no decisions/<type>/ dir yet — likely a typo,
+    """Non-blocking: a draft whose type has no accepted/<type>/ dir yet — likely a typo,
     or a deliberately new type (its dir is created on promotion)."""
-    base = root / "decisions"
+    base = accepted_dir(root)
     known = {p.name for p in base.iterdir() if p.is_dir()} if base.exists() else set()
     return [
-        f"WARN drafts/{d['_file']}: new type {d['type']!r} — no decisions/{d['type']}/ yet "
+        f"WARN drafts/{d['_file']}: new type {d['type']!r} — no accepted/{d['type']}/ yet "
         "(typo? otherwise it's created on promotion)"
         for d in drafts
         if TYPE_RE.match(str(d.get("type") or "")) and d.get("type") not in known
@@ -352,9 +381,10 @@ def prose_unknown_counters(
 # ── render ──────────────────────────────────────────────────────────────────
 def render_index(recs: list[dict], root: Path) -> str:
     recs = sorted(recs, key=lambda r: r["id"])
+    base = decisions_dir(root)  # INDEX.md lives here; links are relative to it
     rows = (
         "\n".join(
-            f"| [{r['id']}]({rel(r['_path'], root)}) | {r.get('type','')} | {r.get('summary','')} "
+            f"| [{r['id']}]({rel(r['_path'], base)}) | {r.get('type','')} | {r.get('summary','')} "
             f"| {STATUS_ICON.get(r.get('status',''), '—')} | {', '.join(r.get('tags') or [])} |"
             for r in recs
         )
@@ -375,7 +405,7 @@ tracing why a decision changed. Records are immutable once `accepted`.
 - Reference by id. Path links — each id rendered as a markdown link to its file — are
   **generated** by `scripts/decisions.py build --relink` and refreshed on every move,
   so they stay correct; never **hand-author** a path.
-- `type` is an open lowercase slug — the `decisions/<type>/` subdirs are the set (e.g.
+- `type` is an open lowercase slug — the `accepted/<type>/` subdirs are the set (e.g.
   architecture, product, security; or policy, legal, finance). For a decision it equals its
   directory and `status` selects the lifecycle dir; the tool enforces placement, not a fixed list.
 
@@ -386,10 +416,10 @@ tracing why a decision changed. Records are immutable once `accepted`.
 {rows}
 
 ## Layout
-`decisions/<type>/` holds accepted numbered records (one subdir per type); `archived/`
-holds retired ones (flat); `drafts/` holds 4-letter WIP candidates (flat, not indexed).
-Moving a record — reclassify, or retire into `archived/` — is safe: ids are canonical
-and the generated links self-heal on `build --relink`.
+Everything lives under `docs/decisions/`: `accepted/<type>/` holds accepted numbered records
+(one subdir per type); `archived/` holds retired ones (flat); `drafts/` holds 4-letter WIP
+candidates (flat, not indexed). Moving a record — reclassify, or retire into `archived/` — is
+safe: ids are canonical and the generated links self-heal on `build --relink`.
 """
 
 
@@ -433,8 +463,8 @@ def rewrite_reference(root: Path, old: str, new: str) -> None:
 
 def match_drafts(root: Path, query: str) -> list[Path]:
     drafts = (
-        [p for p in sorted((root / "drafts").glob("*.md")) if not p.name.startswith("_")]
-        if (root / "drafts").exists()
+        [p for p in sorted(drafts_dir(root).glob("*.md")) if not p.name.startswith("_")]
+        if drafts_dir(root).exists()
         else []
     )
     q = query.lower().strip()
@@ -654,7 +684,7 @@ def promote(
     for did, nid in mapping.items():
         d = by_id[did]
         slug = re.sub(r"^[A-Z]{4}-", "", d["_path"].stem)
-        dest = root / "decisions" / d["type"] / f"{nid}-{slug}.md"
+        dest = accepted_dir(root) / d["type"] / f"{nid}-{slug}.md"
         text = set_field(d["_text"], "id", f'"{nid}"')
         text = set_field(text, "status", "accepted")  # the PR proposes; merge accepts
         for f in ("change_kind", "author"):  # draft-only fields
@@ -673,8 +703,8 @@ def promote(
             text = set_field(
                 set_field(r["_text"], "status", "superseded"), "superseded_by", f'"{mapping[s]}"'
             )
-            (root / "archived").mkdir(parents=True, exist_ok=True)
-            (root / "archived" / r["_file"]).write_text(text, encoding="utf-8")
+            archived_dir(root).mkdir(parents=True, exist_ok=True)
+            (archived_dir(root) / r["_file"]).write_text(text, encoding="utf-8")
             r["_path"].unlink()
     return dests, None
 
@@ -721,15 +751,17 @@ def install(repo: Path) -> None:
     link.symlink_to(rel)
     print(f"symlinked scripts/decisions.py -> {rel}")
 
-    # scaffold docs/ (idempotent — never overwrites)
+    # scaffold docs/decisions/ (idempotent — never overwrites)
     docs = repo / "docs"
-    for d in ("decisions", "archived", "drafts"):
-        (docs / d).mkdir(parents=True, exist_ok=True)
-    for keep in (docs / "decisions" / ".gitkeep", docs / "archived" / ".gitkeep"):
+    for d in (accepted_dir(docs), archived_dir(docs), drafts_dir(docs)):
+        d.mkdir(parents=True, exist_ok=True)
+    for keep in (accepted_dir(docs) / ".gitkeep", archived_dir(docs) / ".gitkeep"):
         keep.exists() or keep.write_text("", encoding="utf-8")
     for src, dst in (
-        (skill / "templates" / "_template.md", docs / "_template.md"),
-        (skill / "templates" / "drafts" / "_template.md", docs / "drafts" / "_template.md"),
+        (skill / "templates" / "README.md", decisions_dir(docs) / "README.md"),
+        (skill / "templates" / "AGENTS.md", decisions_dir(docs) / "AGENTS.md"),
+        (skill / "templates" / "_template.md", decisions_dir(docs) / "_template.md"),
+        (skill / "templates" / "drafts" / "_template.md", drafts_dir(docs) / "_template.md"),
     ):
         if src.exists() and not dst.exists():
             dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
@@ -760,7 +792,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Decision-records registry: build the INDEX, validate, rename/promote drafts.",
     )
     sub = p.add_subparsers(dest="cmd", metavar="{build,check,rename-draft-id,promote,install}")
-    build = sub.add_parser("build", help="write docs/INDEX.md (optionally relink everything)")
+    build = sub.add_parser(
+        "build", help="write docs/decisions/INDEX.md (optionally relink everything)"
+    )
     build.add_argument(
         "--relink",
         action="store_true",
@@ -801,7 +835,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
         install(Path(args.repo))
         return 0
     root = root or find_docs()
-    index = root / "INDEX.md"
+    index = index_path(root)
 
     if args.cmd == "rename-draft-id":
         dest, err = rename_draft(root, args.query, args.new)

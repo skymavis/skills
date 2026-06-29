@@ -17,29 +17,35 @@ by walking up from the CWD, so run it from anywhere in the repo:
 ```
 python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+ refresh links)
 python scripts/decisions.py check                       # validate (CI-safe; exit 1 if stale)
-python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> decisions/
+python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> accepted/
 python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-id a draft
 python scripts/decisions.py install [repo]              # adopt in a repo: symlink + pre-commit
 ```
 
 ## Layout
 
+Everything the convention owns lives under `docs/decisions/`:
+
 ```
 docs/
-  INDEX.md            # GENERATED registry over decisions/ + archived/
-  decisions/<type>/   # ACCEPTED numbered records; <type> = any lowercase slug you define
-  archived/           # RETIRED records (superseded | deprecated) — flat
-  drafts/             # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
+  decisions/              # the convention's namespace (the umbrella)
+    INDEX.md              # GENERATED registry over accepted/ + archived/
+    README.md             # human guide to the convention (scaffolded by install)
+    AGENTS.md             # agent rules: decisions are binding here (scaffolded by install)
+    accepted/<type>/      # ACCEPTED numbered records; <type> = any lowercase slug you define
+    archived/             # RETIRED records (superseded | deprecated) — flat
+    drafts/               # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
+  threat-model.md         # other repo docs stay siblings — still cross-reference decisions
 ```
 
-| Stage           | Dir                 | Id                                     | Status                      |
-| :-------------- | :------------------ | :------------------------------------- | :-------------------------- |
-| candidate (WIP) | `drafts/`           | 4 UPPERCASE letters, mnemonic (`CONF`) | `draft`                     |
-| decision        | `decisions/<type>/` | global counter (`0001`…)               | `accepted`                  |
-| retired         | `archived/`         | (keeps its counter)                    | `superseded` / `deprecated` |
+| Stage           | Dir                | Id                                     | Status                      |
+| :-------------- | :----------------- | :------------------------------------- | :-------------------------- |
+| candidate (WIP) | `drafts/`          | 4 UPPERCASE letters, mnemonic (`CONF`) | `draft`                     |
+| decision        | `accepted/<type>/` | global counter (`0001`…)               | `accepted`                  |
+| retired         | `archived/`        | (keeps its counter)                    | `superseded` / `deprecated` |
 
-**Types are open** — `<type>` is any lowercase slug, and your `decisions/<type>/` subdirs are the
-set (software: `architecture`, `product`, `security`; governance: `policy`, `legal`, `finance`,
+**Types are open** — `<type>` is any lowercase slug, and your `accepted/<type>/` subdirs are the set
+(software: `architecture`, `product`, `security`; governance: `policy`, `legal`, `finance`,
 `people`, `compliance`, `operations`). A new type's directory is created on promotion. The tool
 enforces that a decision sits in the subdir matching its `type` — not a fixed list.
 
@@ -64,10 +70,22 @@ copy-paste prompt. Before any promotion the tool refuses — or any supersession
 
 ## Adopting this in a repo
 
-Run `python .claude/skills/decision-records/scripts/decisions.py install [repo]` (`repo` defaults to
-the current dir; install sets up *there* — it does not search upward). It symlinks
-`<repo>/scripts/decisions.py` to this skill's copy, scaffolds the `docs/` skeleton (`decisions/`,
-`archived/`, `drafts/`, and the two templates), **generates** `INDEX.md` (it's a build artifact, not
-a starter), and in a git repo adds a `pre-commit` hook running `decisions.py check`. Idempotent —
-the skeleton is filled in only where missing; INDEX is (re)generated. For CI, run
-`python scripts/decisions.py check` on every push.
+Run this skill's `decisions.py install [repo]` from the target repo. (`repo` defaults to the current
+dir; install sets up *there* — it does not search upward.) It is idempotent: it fills in only what's
+missing and regenerates `INDEX.md`. What it does:
+
+- **Symlinks** `<repo>/scripts/decisions.py` to this skill's copy.
+- **Scaffolds** `docs/decisions/`: `accepted/`, `archived/`, `drafts/`, the two record templates, a
+  human `README.md`, and an agent-facing `AGENTS.md`.
+- **Generates** `INDEX.md` (a build artifact, not a starter).
+- In a git repo, adds a `pre-commit` hook running `decisions.py check`; run that same command in CI.
+
+Then wire the scaffold into the repo's existing entry points so people and agents discover it:
+
+- Link the scaffolded `docs/decisions/README.md` from the repo's **contributor-facing** docs —
+  `CONTRIBUTING.md`, or the `README.md` only if it addresses contributors (skip a user-facing
+  README) — and point contributors at `docs/decisions/INDEX.md` to browse the accepted decisions.
+- In the repo's root `AGENTS.md`/`CLAUDE.md`, link `docs/decisions/AGENTS.md` so agents pick up that
+  decisions are binding here.
+
+Keep each link to a one-line note on what it is.
