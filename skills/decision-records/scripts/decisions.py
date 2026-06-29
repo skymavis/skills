@@ -46,7 +46,7 @@ Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft ids are 4
     python scripts/decisions.py promote CONF [TIER ...]        # promote draft(s) -> accepted/
     python scripts/decisions.py promote CONF --deref           # invert refs, promote alone
     python scripts/decisions.py promote CONF --allow-replace   # also archive what it supersedes
-    python scripts/decisions.py install [repo]                 # symlink the tool + add CI check
+    python scripts/decisions.py install [repo]                 # adopt: symlink + scaffold + check
 """
 
 from __future__ import annotations
@@ -735,11 +735,39 @@ def rename_draft(
     return dest, None
 
 
+def ensure_gitignored(repo: Path, pattern: str) -> None:
+    """Add `pattern` to <repo>/.gitignore (creating the file if absent) unless already
+    listed. The symlinked scripts/decisions.py is a machine-specific relative symlink into
+    the skill's copy — each clone recreates it via `install`, so it must not be committed."""
+    gi = repo / ".gitignore"
+    existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
+    if pattern in existing.splitlines():
+        print(f".gitignore already ignores {pattern}")
+        return
+    comment = "# decision-records: machine-specific symlink — recreate via `decisions.py install`"
+    head = existing if not existing or existing.endswith("\n") else existing + "\n"
+    sep = "\n" if existing.strip() else ""
+    gi.write_text(head + sep + comment + "\n" + pattern + "\n", encoding="utf-8")
+    print(f"{'created' if not existing else 'updated'} .gitignore — ignoring {pattern}")
+
+
+def wire_entry_point(repo: Path, name: str, body: str) -> None:
+    """Create a root entry-point file (README.md / AGENTS.md) as a placeholder linking the
+    scaffold, but only when it's MISSING — a fresh or empty repo. An existing file is left
+    untouched: the agent adopting the skill wires the link into it instead (see SKILL.md)."""
+    f = repo / name
+    if f.exists():
+        return
+    f.write_text(body, encoding="utf-8")
+    print(f"created {name} (placeholder linking the decision records)")
+
+
 def install(repo: Path) -> None:
-    """Set up the convention in a repo: symlink the tool, scaffold the docs/ skeleton,
-    and add a pre-commit `check` hook in a git repo. `repo` is the project root — install
-    does NOT search upward; it sets up exactly where you point it (CLI default: the CWD).
-    Idempotent: only creates what's missing. Run the first time via the skill's own copy
+    """Set up the convention in a repo: symlink the tool (and gitignore that symlink),
+    scaffold the docs/ skeleton, wire a root README.md/AGENTS.md when absent, and add a
+    pre-commit `check` hook in a git repo. `repo` is the project root — install does NOT
+    search upward; it sets up exactly where you point it (CLI default: the CWD). Idempotent:
+    only creates what's missing, never overwrites. Run the first time via the skill's own copy
     (`python .../decision-records/scripts/decisions.py install`); the symlink works after."""
     canonical = Path(__file__).resolve()
     skill = canonical.parent.parent  # scripts/ -> skill dir
@@ -751,6 +779,7 @@ def install(repo: Path) -> None:
         link.unlink()
     link.symlink_to(rel)
     print(f"symlinked scripts/decisions.py -> {rel}")
+    ensure_gitignored(repo, "scripts/decisions.py")
 
     # scaffold docs/decisions/ (idempotent — never overwrites)
     docs = repo / "docs"
@@ -768,6 +797,27 @@ def install(repo: Path) -> None:
             dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
             print(f"created {dst.relative_to(repo)}")
     main(["build"], root=docs)  # INDEX.md is GENERATED, not scaffolded — build it
+
+    # Wire the root entry points so people/agents discover the scaffold — only when missing
+    # (a fresh/empty repo); an existing README/AGENTS is the adopter's to wire by hand.
+    wire_entry_point(
+        repo,
+        "README.md",
+        f"# {repo.name}\n\n"
+        "<!-- TODO: describe this repo. -->\n\n"
+        "## Decision records\n\n"
+        "Significant decisions live under [`docs/decisions/`](docs/decisions/README.md) — "
+        "browse the [decision index](docs/decisions/INDEX.md).\n",
+    )
+    wire_entry_point(
+        repo,
+        "AGENTS.md",
+        f"# AGENTS.md — {repo.name}\n\n"
+        "<!-- TODO: project-wide agent guidance. -->\n\n"
+        "## Decision records\n\n"
+        "Decisions under `docs/decisions/` are **binding** here — read "
+        "[docs/decisions/AGENTS.md](docs/decisions/AGENTS.md) before changing what they cover.\n",
+    )
 
     hook, line = (
         repo / ".git" / "hooks" / "pre-commit",

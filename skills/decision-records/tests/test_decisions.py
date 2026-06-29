@@ -464,4 +464,26 @@ def test_install_scaffolds_fresh_repo(tmp_path):
     ):
         assert (docs / p).exists(), p
     assert decisions.main(["check"], root=docs) == 0  # scaffolded repo is valid immediately
+
+    # gitignores the machine-specific symlink (creating .gitignore in an empty repo)
+    assert "scripts/decisions.py" in (tmp_path / ".gitignore").read_text().splitlines()
+
+    # wires root entry points (absent in a fresh repo) with placeholders linking the scaffold
+    readme, agents = (tmp_path / "README.md").read_text(), (tmp_path / "AGENTS.md").read_text()
+    assert "docs/decisions/README.md" in readme and "docs/decisions/INDEX.md" in readme
+    assert "docs/decisions/AGENTS.md" in agents
+
     decisions.install(tmp_path)  # idempotent re-run doesn't raise
+
+
+def test_install_preserves_existing_entry_points(tmp_path):
+    (tmp_path / "README.md").write_text("# Existing\n")
+    (tmp_path / "AGENTS.md").write_text("# Existing agents\n")
+    (tmp_path / ".gitignore").write_text("node_modules/\n")
+    decisions.install(tmp_path)
+    assert (tmp_path / "README.md").read_text() == "# Existing\n"  # never overwritten
+    assert (tmp_path / "AGENTS.md").read_text() == "# Existing agents\n"
+    gi = (tmp_path / ".gitignore").read_text().splitlines()
+    assert "node_modules/" in gi and "scripts/decisions.py" in gi  # appended, not clobbered
+    decisions.install(tmp_path)  # idempotent: a second run adds no duplicate ignore line
+    assert (tmp_path / ".gitignore").read_text().count("scripts/decisions.py") == 1

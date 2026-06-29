@@ -74,13 +74,19 @@ Run this skill's `decisions.py install [repo]` from the target repo. (`repo` def
 dir; install sets up *there* — it does not search upward.) It is idempotent: it fills in only what's
 missing and regenerates `INDEX.md`. What it does:
 
-- **Symlinks** `<repo>/scripts/decisions.py` to this skill's copy.
+- **Symlinks** `<repo>/scripts/decisions.py` to this skill's copy, and **gitignores** that path
+  (creating `.gitignore` if absent) — the symlink is machine-specific, so each clone recreates it
+  with `install` rather than committing it.
 - **Scaffolds** `docs/decisions/`: `accepted/`, `archived/`, `drafts/`, the two record templates, a
   human `README.md`, and an agent-facing `AGENTS.md`.
 - **Generates** `INDEX.md` (a build artifact, not a starter).
+- **Wires the root entry points** — when the repo has no root `README.md` or `AGENTS.md` (a fresh or
+  empty repo), creates each as a placeholder linking the scaffold so people and agents discover it.
+  An existing file is left untouched (see below).
 - In a git repo, adds a `pre-commit` hook running `decisions.py check`; run that same command in CI.
 
-Then wire the scaffold into the repo's existing entry points so people and agents discover it:
+If the repo already has these entry points, install leaves them alone — wire the scaffold in
+yourself so people and agents discover it:
 
 - Link the scaffolded `docs/decisions/README.md` from the repo's **contributor-facing** docs —
   `CONTRIBUTING.md`, or the `README.md` only if it addresses contributors (skip a user-facing
