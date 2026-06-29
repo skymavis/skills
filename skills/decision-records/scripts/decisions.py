@@ -629,7 +629,7 @@ def _do_deref(by_id: dict, seeds: set, mapping: dict) -> None:
         if d.get("superseded_by") in draft_ids and d.get("superseded_by") not in seeds:
             t = d["superseded_by"]
             d["_text"] = set_field(d["_text"], "superseded_by", "")  # blank, not null
-            by_id[t]["_text"] = add_to_list_field(by_id[t]["_text"], "supersedes", nid)
+            by_id[t]["_text"] = set_field(by_id[t]["_text"], "supersedes", f'"{nid}"')
             touched.add(t)
     for t in touched:
         by_id[t]["_path"].write_text(by_id[t]["_text"], encoding="utf-8")

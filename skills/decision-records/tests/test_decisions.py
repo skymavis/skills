@@ -366,6 +366,20 @@ def test_promote_deref_inverts_frontmatter_edge(built):
     assert decisions.main(["check"], root=built) == 0
 
 
+def test_promote_deref_inverts_superseded_by_edge(built):
+    # superseded_by is a scalar edge: inverting it must set BBBB's *single* `supersedes`
+    # counter, not coerce it into a list (which would crash check on the unhashable value).
+    place_draft(built, "AAAA", "architecture", "alpha", superseded_by='"BBBB"')
+    place_draft(built, "BBBB", "security", "beta")
+    dests, err = decisions.promote(built, ["AAAA"])  # front-matter-only ref
+    assert dests is None and "--deref" in err
+    assert decisions.main(["promote", "--deref", "AAAA"], root=built) == 0
+    assert (built / "decisions/accepted/architecture/0004-alpha.md").exists()
+    bbbb = decisions.parse_front_matter((built / "decisions/drafts/BBBB-beta.md").read_text())
+    assert bbbb["supersedes"] == "0004"  # scalar counter, not a list
+    assert decisions.main(["check"], root=built) == 0
+
+
 def test_prose_ref_blocks_and_beats_deref(built):
     place_draft(built, "AAAA", "architecture", "alpha", relates_to='["BBBB"]', body="see `BBBB`.")
     place_draft(built, "BBBB", "security", "beta")
