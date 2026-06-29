@@ -1,0 +1,9 @@
+# Repo-level tooling config only. This repo is a collection of skill folders,
+# not a distributable package — per-skill runtime/test deps live in each skill's
+# requirements-dev.txt.
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
