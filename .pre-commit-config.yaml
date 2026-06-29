@@ -1,0 +1,31 @@
+# Local enforcement mirrors CI. Install with: pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  # SKILL.md is LLM-authored, so line shape is normalized deterministically here
+  # rather than asked of the model. mdformat is a CommonMark formatter: it reflows
+  # prose to --wrap, re-aligns GFM tables, and leaves code blocks + unbreakable
+  # tokens (long URLs) over-length rather than mangling them. Plugins: gfm (tables),
+  # frontmatter (preserves the YAML block — base mdformat would destroy it). All
+  # output-affecting deps are pinned so the check/fix fixed point is reproducible.
+  - repo: https://github.com/hukkin/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        files: 'SKILL\.md$'
+        args: ["--wrap", "100"]
+        additional_dependencies:
+          - mdformat-gfm==1.0.0
+          - mdformat-frontmatter==2.1.2
+          - markdown-it-py==4.2.0
+          - mdit-py-plugins==0.6.1
+          - wcwidth==0.8.1
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
