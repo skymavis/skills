@@ -26,7 +26,7 @@ draft** (a breach). When promoting a draft that references other drafts, each re
 
 - `promote <name…> --deref` inverts the dereferenceable edges, then promotes — refused if any
   blocking ref is present.
-- `promote <name…> --allow-replace` confirms archiving the decisions the draft `supersedes` (the ids
+- `promote <name…> --allow-replace` confirms archiving the decisions the draft `supersedes` (the IDs
   are shown in the preview, so the flag is just intent).
 - Promote several at once, space- or comma-separated. Refs *within* the set become counter↔counter
   automatically.

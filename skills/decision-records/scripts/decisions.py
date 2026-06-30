@@ -25,24 +25,24 @@ Lifecycle (there is NO "proposed" status — proposing is the *act* of opening a
   decisions/accepted/<type>/NNNN   --(supersede/deprecate)-->  decisions/archived/NNNN-title.md
 
 Conventions this tool encodes and enforces:
-  * Identity is the global counter `id` (`0001`, …) for decisions; a 4-UPPERCASE-letter
-    id (`CONF`) for drafts — mint a mnemonic of the draft's topic; `check` enforces
+  * Identity is the global counter ID (`0001`, …) for decisions; a 4-UPPERCASE-letter
+    ID (`CONF`) for drafts — mint a mnemonic of the draft's topic; `check` enforces
     format + uniqueness. Permanent and canonical; the only thing cross-refs use.
   * `type` is any lowercase slug — the set is OPEN; your accepted/<type>/ subdirs are the
     suggested set (architecture/product/security, or policy/legal/finance for governance).
     It lives in front-matter and, for a decision, equals its directory. `status` -> lifecycle.
-  * Cross-reference by writing the bare id as inline code — `0006` or `CONF`. NEVER
-    hand-author a path. `build --relink` rewrites every such id (in every docs/*.md —
+  * Cross-reference by writing the bare ID as inline code — `0006` or `CONF`. NEVER
+    hand-author a path. `build --relink` rewrites every such ID (in every docs/*.md —
     records, drafts, and other docs) into a correct relative link and self-heals on moves.
   * An accepted decision may NEVER reference a draft (a breach); `promote` therefore
     promotes a whole reference-closure together and refuses a set that would breach.
   * INDEX.md and every path link are GENERATED build artifacts.
 
-Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft ids are 4 UPPERCASE letters):
+Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft IDs are 4 UPPERCASE letters):
     python scripts/decisions.py build                  # write docs/decisions/INDEX.md
     python scripts/decisions.py build --relink         # also refresh path links everywhere
     python scripts/decisions.py check                  # validate only; exit 1 if stale (CI)
-    python scripts/decisions.py rename-draft-id <name> <NEW>   # re-id a draft, repoint refs
+    python scripts/decisions.py rename-draft-id <name> <NEW>   # re-ID a draft, repoint refs
     python scripts/decisions.py promote CONF [TIER ...]        # promote draft(s) -> accepted/
     python scripts/decisions.py promote CONF --deref           # invert refs, promote alone
     python scripts/decisions.py promote CONF --allow-replace   # also archive what it supersedes
@@ -78,13 +78,13 @@ ACTIVE_STATUS = {"accepted"}  # -> decisions/accepted/
 RETIRED_STATUS = {"superseded", "deprecated"}  # -> decisions/archived/
 
 RECORD_RE = re.compile(r"^\d{4}-.+\.md$")  # NNNN-kebab-title.md (decisions, archived)
-DRAFT_ID_RE = re.compile(r"^[A-Z]{4}$")  # 4-uppercase-letter draft id
-# An inline-code id — a counter (`0006`) or a draft tag (`CONF`) — not already linked.
+DRAFT_ID_RE = re.compile(r"^[A-Z]{4}$")  # 4-uppercase-letter draft ID
+# An inline-code ID — a counter (`0006`) or a draft tag (`CONF`) — not already linked.
 ID_RE = re.compile(r"(?<!\[)`(\d{4}|[A-Z]{4})`")
 COUNTER_RE = re.compile(r"(?<!\[)`(\d{4})`")  # numeric-only, for prose validation
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
-LABEL_ID_RE = re.compile(r"`?(\d{4}|[A-Z]{4})`?$")  # link label that is just an id
-FILE_ID_RE = re.compile(r"^(\d{4}|[A-Z]{4})-")  # leading id in a filename
+LABEL_ID_RE = re.compile(r"`?(\d{4}|[A-Z]{4})`?$")  # link label that is just an ID
+FILE_ID_RE = re.compile(r"^(\d{4}|[A-Z]{4})-")  # leading ID in a filename
 STATUS_ICON = {"accepted": "🟢", "deprecated": "⚪", "superseded": "🔵"}
 
 
@@ -191,7 +191,7 @@ def load_drafts(root: Path) -> list[dict]:
 
 
 def ref_map(recs: list[dict], drafts: list[dict]) -> dict:
-    """id -> path, for both counters and draft ids (the universe of cross-ref targets)."""
+    """ID -> path, for both counters and draft IDs (the universe of cross-ref targets)."""
     m = {r["id"]: r["_path"] for r in recs}
     for d in drafts:
         m.setdefault(d.get("id"), d["_path"])
@@ -203,7 +203,7 @@ def reference_targets(
 ) -> list[tuple[Path, str | None]]:
     """Every docs/*.md whose body carries generated cross-reference links — records,
     drafts, and any other doc (threat-model, roadmap, …). Pairs (path, own_id); own_id is
-    the record/draft id (so it doesn't self-link), else None."""
+    the record/draft ID (so it doesn't self-link), else None."""
     own = {r["_path"]: r["id"] for r in recs}
     own.update({d["_path"]: d.get("id") for d in drafts})
     return [(p, own.get(p)) for p in _md_files(root)]
@@ -220,7 +220,7 @@ def rel(target: Path, start: Path) -> str:
 
 
 def relink(text: str, refs: dict, own_id: str | None, self_dir: Path) -> str:
-    """Render inline-code ids (counters and draft tags) as relative links, looked up
+    """Render inline-code IDs (counters and draft tags) as relative links, looked up
     from `refs`. Refresh existing links first (moves self-heal), then linkify bare
     ones. Front-matter untouched. Idempotent."""
     head, body = split_front_matter(text)
@@ -266,7 +266,7 @@ def check_links(root: Path, recs: list[dict], drafts: list[dict], refs: dict) ->
             if cm:
                 rid = cm.group(1)
                 if rid not in refs:
-                    errs.append(f"{name}: link to unknown id {rid} ({target})")
+                    errs.append(f"{name}: link to unknown ID {rid} ({target})")
                 elif dest.resolve() != refs[rid].resolve():
                     errs.append(f"{name}: stale link for {rid} -> {target}")
     return errs
@@ -278,7 +278,7 @@ def validate_records(recs: list[dict], refs: dict) -> list[str]:
     for r in recs:
         rid = r.get("id")
         if rid in ids:
-            errs.append(f"duplicate id {rid}: {r['_file']} and {ids[rid]['_file']}")
+            errs.append(f"duplicate ID {rid}: {r['_file']} and {ids[rid]['_file']}")
         ids[rid] = r
         if r["_lifecycle"] == "decisions":
             if not TYPE_RE.match(str(r.get("type") or "")):
@@ -310,16 +310,16 @@ def validate_drafts(root: Path, refs: dict, drafts: list[dict]) -> list[str]:
     for d in drafts:
         did = d.get("id")
         if not did or not DRAFT_ID_RE.match(str(did)):
-            errs.append(f"drafts/{d['_file']}: id must be 4 UPPERCASE letters (got {did!r})")
+            errs.append(f"drafts/{d['_file']}: ID must be 4 UPPERCASE letters (got {did!r})")
         elif did in seen:
-            errs.append(f"drafts/{d['_file']}: duplicate draft id {did} (also {seen[did]})")
+            errs.append(f"drafts/{d['_file']}: duplicate draft ID {did} (also {seen[did]})")
         else:
             seen[did] = d["_file"]
         if not TYPE_RE.match(str(d.get("type") or "")):
             errs.append(f"drafts/{d['_file']}: type {d.get('type')!r} must be a lowercase slug")
         for ref in (d.get("relates_to") or []) + [d.get("supersedes"), d.get("superseded_by")]:
             if ref and ref not in refs:
-                errs.append(f"drafts/{d['_file']}: references unknown id {ref}")
+                errs.append(f"drafts/{d['_file']}: references unknown ID {ref}")
     return errs
 
 
@@ -337,8 +337,8 @@ def warn_unknown_types(root: Path, drafts: list[dict]) -> list[str]:
 
 
 def draft_references(d: dict, draft_ids: set) -> set:
-    """The draft ids this record points at — and that would survive into a decision:
-    front-matter relates_to/supersedes/superseded_by, plus body inline-code ids whether
+    """The draft IDs this record points at — and that would survive into a decision:
+    front-matter relates_to/supersedes/superseded_by, plus body inline-code IDs whether
     bare (`CONF`) or already markdown-linked ([`CONF`](...)). Linked refs are counted too,
     so a relinked decision body cannot smuggle a draft reference past the breach check."""
     refs = set(d.get("relates_to") or [])
@@ -346,8 +346,8 @@ def draft_references(d: dict, draft_ids: set) -> set:
         if d.get(k):
             refs.add(d[k])
     _, body = split_front_matter(d["_text"])
-    refs |= set(ID_RE.findall(body))  # bare inline-code ids
-    for label, _ in LINK_RE.findall(body):  # ...and markdown-linked ids
+    refs |= set(ID_RE.findall(body))  # bare inline-code IDs
+    for label, _ in LINK_RE.findall(body):  # ...and markdown-linked IDs
         m = LABEL_ID_RE.fullmatch(label.strip())
         if m:
             refs.add(m.group(1))
@@ -369,7 +369,7 @@ def prose_unknown_counters(
     root: Path, recs: list[dict], drafts: list[dict], refs: dict
 ) -> list[str]:
     """Un-linkified numeric counters in prose must resolve (4-letter tokens are not
-    flagged — they are ordinary words unless they match a known draft id)."""
+    flagged — they are ordinary words unless they match a known draft ID)."""
     errs = []
     for path, own in reference_targets(root, recs, drafts):
         _, body = split_front_matter(path.read_text(encoding="utf-8"))
@@ -401,9 +401,9 @@ tracing why a decision changed. Records are immutable once `accepted`.
 
 ## Identity & references
 - Identity is the global counter (`0001`, …), assigned in creation order. Permanent;
-  the only thing a human writes to cross-reference. Drafts use a 4-UPPERCASE-letter id
+  the only thing a human writes to cross-reference. Drafts use a 4-UPPERCASE-letter ID
   instead — a mnemonic of the draft's topic.
-- Reference by id. Path links — each id rendered as a markdown link to its file — are
+- Reference by ID. Path links — each ID rendered as a markdown link to its file — are
   **generated** by `scripts/decisions.py build --relink` and refreshed on every move,
   so they stay correct; never **hand-author** a path.
 - `type` is an open lowercase slug — the `accepted/<type>/` subdirs are the set (e.g.
@@ -424,7 +424,7 @@ Everything lives under `docs/decisions/`:
 - `drafts/`: 4-letter WIP candidates, flat and not indexed.
 
 Moving a record never breaks references, whether you reclassify it or retire it into `archived/`.
-Records are keyed by id, not path, and `build --relink` refreshes the generated links.
+Records are keyed by ID, not path, and `build --relink` refreshes the generated links.
 """
 
 
@@ -438,9 +438,9 @@ def _md_files(root: Path) -> list[Path]:
 
 
 def rewrite_reference(root: Path, old: str, new: str) -> None:
-    """Repoint every reference from id `old` to id `new` across the tree — front-matter
+    """Repoint every reference from ID `old` to ID `new` across the tree — front-matter
     ref fields (de-duplicated) and inline-code body refs. Used when promotion changes a
-    draft's id so inbound references don't dangle. `build --relink` then re-paths them."""
+    draft's ID so inbound references don't dangle. `build --relink` then re-paths them."""
     link = re.compile(r"\[`" + re.escape(old) + r"`\]\([^)]*\)")
     bare = re.compile(r"`" + re.escape(old) + r"`")
 
@@ -473,7 +473,7 @@ def match_drafts(root: Path, query: str) -> list[Path]:
         else []
     )
     q = query.lower().strip()
-    for p in drafts:  # an exact draft-id match wins outright (no substring noise)
+    for p in drafts:  # an exact draft-ID match wins outright (no substring noise)
         if q == str(parse_front_matter(p.read_text(encoding="utf-8")).get("id", "")).lower():
             return [p]
     hits = []
@@ -505,7 +505,7 @@ def select_draft(root: Path, query: str, input_fn=input) -> tuple[Path | None, s
     try:
         raw = input_fn(f"pick a candidate [1-{len(matches)}]: ").strip()
     except EOFError:
-        return None, "ambiguous match and no input — pass the exact draft id"
+        return None, "ambiguous match and no input — pass the exact draft ID"
     if not raw.isdigit() or not (1 <= int(raw) <= len(matches)):
         return None, "no candidate selected"
     return matches[int(raw) - 1], None
@@ -717,19 +717,19 @@ def promote(
 def rename_draft(
     root: Path, query: str, new_id: str, input_fn=input
 ) -> tuple[Path | None, str | None]:
-    """Change a draft's 4-letter id (e.g. a random one -> a mnemonic), renaming the
+    """Change a draft's 4-letter ID (e.g. a random one -> a mnemonic), renaming the
     file and repointing every inbound reference. Counters (decisions) are immutable."""
     new = new_id.upper()
     if not DRAFT_ID_RE.match(new):
-        return None, f"{new_id!r} is not a 4-letter id (A-Z)"
+        return None, f"{new_id!r} is not a 4-letter ID (A-Z)"
     if new in {str(d.get("id", "")).upper() for d in load_drafts(root)}:
-        return None, f"draft id {new} is already in use"
+        return None, f"draft ID {new} is already in use"
     src, err = select_draft(root, query, input_fn)
     if err:
         return None, err
     old = parse_front_matter(src.read_text(encoding="utf-8")).get("id")
     if old == new:
-        return None, f"draft already has id {new}"
+        return None, f"draft already has ID {new}"
     slug = re.sub(r"^[A-Z]{4}-", "", src.stem)
     dest = src.with_name(f"{new}-{slug}.md")
     text = set_field(src.read_text(encoding="utf-8"), "id", new)
@@ -856,14 +856,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="also refresh generated path links in every docs/*.md (records, drafts, docs)",
     )
     sub.add_parser("check", help="validate only; exit 1 if INDEX or any link is stale (CI-safe)")
-    rn = sub.add_parser("rename-draft-id", help="change a draft's id and repoint all references")
-    rn.add_argument("query", help="draft id, title, or filename fragment (fuzzy)")
-    rn.add_argument("new", help="the new 4-letter id (UPPERCASE)")
+    rn = sub.add_parser("rename-draft-id", help="change a draft's ID and repoint all references")
+    rn.add_argument("query", help="draft ID, title, or filename fragment (fuzzy)")
+    rn.add_argument("new", help="the new 4-letter ID (UPPERCASE)")
     pr = sub.add_parser(
         "promote", help="move one or more drafts into decisions/ as the next counters"
     )
     pr.add_argument(
-        "query", nargs="+", help="one or more draft ids/names (space- or comma-separated)"
+        "query", nargs="+", help="one or more draft IDs/names (space- or comma-separated)"
     )
     pr.add_argument(
         "--deref",

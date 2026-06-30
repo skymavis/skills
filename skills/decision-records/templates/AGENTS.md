@@ -30,7 +30,7 @@ install it before changing any record.
   don't edit.
 - `drafts/` — work-in-progress candidates; mutable until promoted. Promotion is a finalizing step
   that needs explicit human sign-off, so never promote on your own initiative.
-- Other `docs/*.md` — living docs that may cross-reference records by id.
+- Other `docs/*.md` — living docs that may cross-reference records by ID.
 - `docs/decisions/INDEX.md` is **generated** — never hand-edit it; regenerate with
   `scripts/decisions.py build`.
 

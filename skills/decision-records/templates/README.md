@@ -6,7 +6,7 @@ Everything lives under `docs/decisions/`, so nothing here is confused with the r
 ## Working with an agent (the easy way)
 
 If you use an agent that has the **decision-records** skill installed, just ask — it knows the
-lifecycle, mints ids, runs the tool, and keeps the index and links correct. For example:
+lifecycle, mints IDs, runs the tool, and keeps the index and links correct. For example:
 
 - "Capture what we just discussed into a decision draft."
 - "Draft an architecture decision: we'll use X for Y."
@@ -41,9 +41,9 @@ why a decision changed.
 ## Authoring & cross-referencing
 
 - Copy `_template.md` for a decision, or `drafts/_template.md` for a draft, and fill it in.
-- Mint a draft's 4-letter id yourself (a mnemonic of the topic). Accepted records get the next
+- Mint a draft's 4-letter ID yourself (a mnemonic of the topic). Accepted records get the next
   global counter automatically when a draft is promoted.
-- Refer to another record by writing its id inline — the tooling renders ids as links and keeps them
+- Refer to another record by writing its ID inline — the tooling renders IDs as links and keeps them
   correct when files move. Never hand-write a path to a record.
 
 ## Promotion & superseding
@@ -63,7 +63,7 @@ the record being replaced.
 python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+ refresh links)
 python scripts/decisions.py check                       # validate (CI-safe; exit 1 if stale)
 python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> accepted/
-python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-id a draft
+python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-ID a draft
 python scripts/decisions.py install [repo]              # adopt in a repo: symlink + pre-commit
 ```
 

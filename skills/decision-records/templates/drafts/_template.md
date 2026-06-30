@@ -1,6 +1,6 @@
 ---
 # Draft — a decision candidate (WIP). Same shape as a decision record, so promotion is
-# mechanical; it just carries a 4-letter id and status: draft, and lives in drafts/.
+# mechanical; it just carries a 4-letter ID and status: draft, and lives in drafts/.
 # Filename:  AAAA-kebab-title.md  (AAAA = the 4 UPPERCASE letters of `id` below).
 # Promotion, linking, and validation are the decision-records skill's job.
 id: ABCD                          # REQUIRED: 4 UPPERCASE letters, a mnemonic of the topic
@@ -11,9 +11,9 @@ date: YYYY-MM-DD
 deciders: [trung]
 summary: One sentence describing the decision.
 tags: []                          # e.g. [access-control, retrieval, orchestrator]
-relates_to: []                    # related record ids — counters and/or draft ids
+relates_to: []                    # related record IDs — counters and/or draft IDs
 supersedes:                       # a decision this replaces, or blank
-superseded_by:                    # id that replaces this, or blank
+superseded_by:                    # ID that replaces this, or blank
 ---
 
 # {id} — {title}
@@ -54,4 +54,4 @@ Why this option over the others, given the context above.
 
 ## References
 
-- Threads, specs, external sources, and related records by id (e.g. `0001`, `TIER`).
+- Threads, specs, external sources, and related records by ID (e.g. `0001`, `TIER`).

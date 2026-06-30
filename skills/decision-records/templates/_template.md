@@ -12,9 +12,9 @@ date: YYYY-MM-DD
 deciders: [trung]
 summary: One sentence describing the decision.
 tags: []                          # e.g. [access-control, retrieval, orchestrator]
-relates_to: []                    # related record ids, e.g. ["0001", "0003"]
-supersedes:                       # id this replaces, or blank
-superseded_by:                    # id that replaces this, or blank
+relates_to: []                    # related record IDs, e.g. ["0001", "0003"]
+supersedes:                       # ID this replaces, or blank
+superseded_by:                    # ID that replaces this, or blank
 ---
 
 # {id} — {title}
@@ -55,4 +55,4 @@ Why this option over the others, given the context above.
 
 ## References
 
-- Threads, specs, external sources, and related records by id (e.g. `0001`).
+- Threads, specs, external sources, and related records by ID (e.g. `0001`).

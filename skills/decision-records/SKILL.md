@@ -18,7 +18,7 @@ by walking up from the CWD, so run it from anywhere in the repo:
 python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+ refresh links)
 python scripts/decisions.py check                       # validate (CI-safe; exit 1 if stale)
 python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> accepted/
-python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-id a draft
+python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-ID a draft
 python scripts/decisions.py install [repo]              # adopt in a repo: symlink + pre-commit
 ```
 
@@ -34,11 +34,11 @@ docs/
     AGENTS.md             # agent rules: decisions are binding here (scaffolded by install)
     accepted/<type>/      # ACCEPTED numbered records; <type> = any lowercase slug you define
     archived/             # RETIRED records (superseded | deprecated) — flat
-    drafts/               # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
+    drafts/               # WIP candidates — flat, 4-UPPERCASE-letter IDs, NOT in INDEX
   threat-model.md         # other repo docs stay siblings — still cross-reference decisions
 ```
 
-| Stage           | Dir                | Id                                     | Status                      |
+| Stage           | Dir                | ID                                     | Status                      |
 | :-------------- | :----------------- | :------------------------------------- | :-------------------------- |
 | candidate (WIP) | `drafts/`          | 4 UPPERCASE letters, mnemonic (`CONF`) | `draft`                     |
 | decision        | `accepted/<type>/` | global counter (`0001`…)               | `accepted`                  |
@@ -50,8 +50,8 @@ docs/
 enforces that a decision sits in the subdir matching its `type` — not a fixed list.
 
 There is no `proposed` status — "proposing" is the act of opening a PR that promotes a draft. Mint a
-draft id yourself (a mnemonic of the topic); `check` enforces format + uniqueness. Cross-reference
-by writing the bare id as inline code — `` `0006` `` (decision) or `` `CONF` `` (draft); never
+draft ID yourself (a mnemonic of the topic); `check` enforces format + uniqueness. Cross-reference
+by writing the bare ID as inline code — `` `0006` `` (decision) or `` `CONF` `` (draft); never
 hand-author a path — `build --relink` generates and self-heals every link across every `docs/*.md`
 (records, drafts, and other docs like `threat-model.md`).
 

@@ -132,7 +132,7 @@ def test_move_self_heals(built):
     assert "0001-alpha-renamed.md" in gamma
 
 
-# ── drafts: UPPERCASE ids, draft↔draft links ────────────────────────────────
+# ── drafts: UPPERCASE IDs, draft↔draft links ────────────────────────────────
 def test_draft_to_draft_link(root):
     place_draft(root, "AAAA", "security", "one")
     place_draft(root, "BBBB", "architecture", "two", body="relates to `AAAA`.")
