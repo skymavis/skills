@@ -88,6 +88,52 @@ def built(root):
     return root
 
 
+# ── front-matter parsing: block scalars ─────────────────────────────────────
+def test_folded_scalar_summary_joins_lines():
+    text = (
+        '---\nid: "0001"\nsummary: >-\n  A summary written as a folded block scalar\n'
+        "  that continues across several indented lines.\nstatus: accepted\n---\n\nbody\n"
+    )
+    fm = decisions.parse_front_matter(text)
+    assert fm["summary"] == (
+        "A summary written as a folded block scalar that continues across several indented lines."
+    )
+    assert fm["status"] == "accepted"  # the field after the block is still parsed
+
+
+def test_literal_scalar_summary_preserves_newlines():
+    text = '---\nid: "0001"\nsummary: |\n  line one\n  line two\nstatus: accepted\n---\n\nbody\n'
+    fm = decisions.parse_front_matter(text)
+    assert fm["summary"] == "line one\nline two"
+
+
+def test_block_scalar_with_no_continuation_is_empty():
+    text = '---\nid: "0001"\nsummary: >-\nstatus: accepted\n---\n\nbody\n'
+    fm = decisions.parse_front_matter(text)
+    assert fm["summary"] == ""
+    assert fm["status"] == "accepted"
+
+
+def test_folded_summary_renders_in_index(root):
+    p = root / "decisions/accepted/architecture/0001-alpha.md"
+    p.write_text(
+        p.read_text().replace(
+            "summary: one-line summary",
+            "summary: >-\n  A summary written as a folded block scalar\n  across two lines.",
+        )
+    )
+    assert decisions.main(["build"], root=root) == 0
+    index = (root / "decisions" / "INDEX.md").read_text()
+    assert "A summary written as a folded block scalar across two lines." in index
+    assert ">-" not in index
+
+
+def test_check_flags_bare_scalar_indicator_summary(root):
+    p = root / "decisions/accepted/architecture/0001-alpha.md"
+    p.write_text(p.read_text().replace("summary: one-line summary", 'summary: ">-"'))
+    assert decisions.main(["check"], root=root) == 1
+
+
 # ── build / render ──────────────────────────────────────────────────────────
 def test_build_writes_index_sorted(root):
     assert decisions.main(["build"], root=root) == 0

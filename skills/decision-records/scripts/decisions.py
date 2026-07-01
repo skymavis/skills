@@ -77,6 +77,8 @@ TYPE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 ACTIVE_STATUS = {"accepted"}  # -> decisions/accepted/
 RETIRED_STATUS = {"superseded", "deprecated"}  # -> decisions/archived/
 
+BLOCK_SCALAR_RE = re.compile(r"^([>|])[0-9+-]*$")  # folded (>) / literal (|), chomp/indent mods
+
 RECORD_RE = re.compile(r"^\d{4}-.+\.md$")  # NNNN-kebab-title.md (decisions, archived)
 DRAFT_ID_RE = re.compile(r"^[A-Z]{4}$")  # 4-uppercase-letter draft ID
 # An inline-code ID — a counter (`0006`) or a draft tag (`CONF`) — not already linked.
@@ -113,17 +115,67 @@ def index_path(root: Path) -> Path:
 
 
 # ── parsing ─────────────────────────────────────────────────────────────────
+def _consume_block_scalar(
+    lines: list[str], start: int, key_indent: int, folded: bool
+) -> tuple[str, int]:
+    """Consume a YAML block scalar (folded `>` / literal `|`) whose `key:` line sits at
+    `key_indent`. Continuation lines are those indented past `key_indent`; the first
+    such line sets the block's indentation, which is stripped from every line. Returns
+    (joined text, index of the first line after the block)."""
+    block: list[str] = []
+    indent: int | None = None
+    idx = start
+    while idx < len(lines):
+        raw = lines[idx]
+        if not raw.strip():
+            block.append("")
+            idx += 1
+            continue
+        cur_indent = len(raw) - len(raw.lstrip(" "))
+        if cur_indent <= key_indent:
+            break
+        if indent is None:
+            indent = cur_indent
+        block.append(raw[indent:])
+        idx += 1
+    while block and block[-1] == "":
+        block.pop()
+    if not folded:
+        return "\n".join(block), idx
+    paragraphs, para = [], []
+    for line in block:
+        if line == "":
+            if para:
+                paragraphs.append(" ".join(para))
+                para = []
+        else:
+            para.append(line)
+    if para:
+        paragraphs.append(" ".join(para))
+    return "\n\n".join(paragraphs), idx
+
+
 def parse_front_matter(text: str) -> dict:
     if not text.startswith("---"):
         raise ValueError("missing front-matter")
     end = text.index("\n---", 3)
+    lines = text[3:end].splitlines()
     data: dict = {}
-    for raw in text[3:end].splitlines():
+    idx = 0
+    while idx < len(lines):
+        raw = lines[idx]
         line = raw.split(" #", 1)[0].rstrip()
         if not line.strip() or line.lstrip().startswith("#") or ":" not in line:
+            idx += 1
             continue
         key, _, val = line.partition(":")
         key, val = key.strip(), val.strip()
+        block = BLOCK_SCALAR_RE.match(val)
+        if block:
+            key_indent = len(raw) - len(raw.lstrip(" "))
+            folded = block.group(1) == ">"
+            data[key], idx = _consume_block_scalar(lines, idx + 1, key_indent, folded)
+            continue
         if val in ("", "null", "~"):
             data[key] = None if val in ("null", "~") else ""
         elif val.startswith("[") and val.endswith("]"):
@@ -131,6 +183,7 @@ def parse_front_matter(text: str) -> dict:
             data[key] = [i.strip().strip('"').strip("'") for i in inner.split(",") if i.strip()]
         else:
             data[key] = val.strip('"').strip("'")
+        idx += 1
     return data
 
 
@@ -280,6 +333,9 @@ def validate_records(recs: list[dict], refs: dict) -> list[str]:
         if rid in ids:
             errs.append(f"duplicate ID {rid}: {r['_file']} and {ids[rid]['_file']}")
         ids[rid] = r
+        summary = r.get("summary")
+        if summary and BLOCK_SCALAR_RE.match(str(summary).strip()):
+            errs.append(f"{r['_file']}: summary is an unresolved YAML scalar indicator {summary!r}")
         if r["_lifecycle"] == "decisions":
             if not TYPE_RE.match(str(r.get("type") or "")):
                 errs.append(f"{r['_file']}: type {r.get('type')!r} must be a lowercase slug")
