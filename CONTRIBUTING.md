@@ -73,7 +73,8 @@ validator over every skill and the touched skill's pytest suite, so green locall
 ## Commits
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org)
-(`type(scope): summary`) with the subject and body lines wrapped at 72. This is enforced by
-`gitlint` — a `commit-msg` hook locally and a CI gate on every PR (config in `.gitlint`).
-`pre-commit install` wires the hook automatically. For the rare unbreakable body line (a long URL),
-add a `gitlint-ignore: B1` footer to that commit.
+(`type(scope): summary`) with the subject and body lines wrapped at 72. Every commit needs a body —
+explain *why*, not just what the diff already shows. This is enforced by `gitlint` — a `commit-msg`
+hook locally and a CI gate on every PR (config in `.gitlint`). `pre-commit install` wires the hook
+automatically. For the rare unbreakable body line (a long URL), add a `gitlint-ignore: B1` footer to
+that commit.

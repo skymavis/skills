@@ -52,6 +52,4 @@ artifacts** (e.g. a generated `INDEX.md`) — regenerate via that skill's own to
 - New or changed behavior has a test.
 - `pre-commit run --all-files` is clean, and the README catalog is updated if a skill was added or
   its description changed.
-- Commits are [Conventional Commits](https://www.conventionalcommits.org) (`type(scope): summary`),
-  subject and body wrapped at 72 — enforced by `gitlint` (commit-msg hook + CI). Write commit bodies
-  at 72 columns.
+- Commits follow the contract in `CONTRIBUTING.md`'s "## Commits" section (enforced by `gitlint`).
