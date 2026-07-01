@@ -1,0 +1,31 @@
+# CODEOWNERS
+# https://docs.github.com/articles/about-codeowners
+#
+# Order: the LAST matching pattern wins for any given path. None of the
+# patterns below overlap, so order here is documentation, not enforcement —
+# grouped by risk: enforcement mechanism (can silently defeat protection if
+# changed unreviewed) > governance/orientation (misdirects, doesn't break
+# anything mechanically) > owned content (ordinary maintainership).
+#
+# Leading slashes anchor a pattern to the repo root — e.g. /tests/ matches
+# only the top-level tests/ directory, never skills/<name>/tests/. Don't
+# drop the leading slash on a directory pattern without checking this file's
+# scope doesn't silently balloon to every skill.
+
+# Tier 1 — enforcement mechanism
+/.github/                      @trungfinity
+/scripts/validate_skills.py    @trungfinity
+/tests/                        @trungfinity
+/.pre-commit-config.yaml       @trungfinity
+/.gitlint                      @trungfinity
+/pyproject.toml                @trungfinity
+
+# Tier 2 — governance & orientation
+/AGENTS.md                     @trungfinity
+/CONTRIBUTING.md               @trungfinity
+/README.md                     @trungfinity
+/template/                     @trungfinity
+/LICENSE                       @trungfinity
+
+# Tier 3 — owned content
+/skills/decision-records/      @trungfinity
