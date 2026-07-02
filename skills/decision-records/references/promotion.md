@@ -7,8 +7,8 @@ draft** (a breach). When promoting a draft that references other drafts, each re
 | Reference                      | Direction | Resolution                                                                                   |
 | :----------------------------- | :-------- | :------------------------------------------------------------------------------------------- |
 | `relates_to` (front-matter)    | symmetric | **dereference** — drop here; the referenced draft gains your new counter in its `relates_to` |
-| `superseded_by` (front-matter) | backward  | **dereference** — drop here; the referenced draft gains your new counter in its `supersedes` |
-| `supersedes` → a draft         | forward   | **blocking** — promote that draft first                                                      |
+| `superseded_by` (front-matter) | forward   | **dereference** — drop here; the referenced draft gains your new counter in its `supersedes` |
+| `supersedes` → a draft         | backward  | **blocking** — promote that draft first                                                      |
 | prose `` `DRFT` `` in the body | content   | **blocking** — promote that draft first                                                      |
 
 `supersedes` → an existing **decision** is a real supersession, gated behind `--allow-replace`.
