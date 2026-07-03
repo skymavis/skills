@@ -25,8 +25,8 @@ they actually are. Don't sanitize.
 
 ## Decision
 
-The proposed decision in one or two sentences, active voice ("We will …"). Binding and immutable
-once promoted and `accepted`.
+The proposed decision in one or two sentences, active voice ("We will …"). Binding once promoted and
+`accepted` — course changes only by supersession.
 
 ## Rationale
 

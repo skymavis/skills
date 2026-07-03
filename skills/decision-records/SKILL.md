@@ -58,10 +58,12 @@ hand-author a path — `build --relink` generates and self-heals every link acro
 ## Promoting drafts
 
 **Promotion requires explicit human sign-off.** Promoting is a finalizing, semi-irreversible act
-(accepted records are immutable — supersede, don't edit). Author, edit, and validate drafts freely;
-but never run `promote` — or its downstream steps (replacing naming placeholders, resolving threads,
-regenerating `INDEX.md`) — without the user's explicit go-ahead in the current turn. Don't infer
-approval from an adjacent choice (a scope answer, a cleared checklist); when unsure, ask.
+(accepted records are held firm — changing course requires supersession, never a rewrite;
+decider-approved maintenance edits such as clarity, staleness, and cross-record consistency are
+allowed). Author, edit, and validate drafts freely; but never run `promote` — or its downstream
+steps (replacing naming placeholders, resolving threads, regenerating `INDEX.md`) — without the
+user's explicit go-ahead in the current turn. Don't infer approval from an adjacent choice (a scope
+answer, a cleared checklist); when unsure, ask.
 
 **An accepted decision may never reference a draft.** `promote` enforces this: it refuses a set that
 would breach and prints exactly how to fix it (co-promote, `--deref`, or `--allow-replace`) with a

@@ -1,7 +1,8 @@
 # Decision records
 
-This repo records significant decisions as short, numbered, immutable documents (ADR-style).
-Everything lives under `docs/decisions/`, so nothing here is confused with the repo's other docs.
+This repo records significant decisions as short, numbered documents (ADR-style), held firm once
+accepted. Everything lives under `docs/decisions/`, so nothing here is confused with the repo's
+other docs.
 
 ## Working with an agent (the easy way)
 
@@ -24,13 +25,15 @@ A decision moves through three stages, one directory each:
 | Stage    | Directory          | Identified by                         | Meaning                                       |
 | :------- | :----------------- | :------------------------------------ | :-------------------------------------------- |
 | Draft    | `drafts/`          | a 4-uppercase-letter mnemonic (CONF)  | a work-in-progress candidate; edit freely     |
-| Accepted | `accepted/<type>/` | a zero-padded counter (0001, 0002, …) | a finalized, **immutable** decision           |
+| Accepted | `accepted/<type>/` | a zero-padded counter (0001, 0002, …) | a finalized decision, **held firm**           |
 | Retired  | `archived/`        | (keeps its counter)                   | superseded or deprecated; kept for the record |
 
 There is no "proposed" stage — *proposing* a decision is the act of opening a pull request that
-promotes a draft. Once a draft lands in `accepted/`, it is immutable: you don't edit it, you
-supersede it with a newer decision. `<type>` is an open lowercase label you choose (architecture,
-product, security, policy, legal, …); each type is its own subdirectory under `accepted/`.
+promotes a draft. Once a draft lands in `accepted/` it is held firm: changing course means
+superseding it with a newer decision, never rewriting it; decider-approved maintenance edits
+(clarity, staleness, consistency) are allowed. `<type>` is an open lowercase label you choose
+(architecture, product, security, policy, legal, …); each type is its own subdirectory under
+`accepted/`.
 
 ## Reading the records
 
