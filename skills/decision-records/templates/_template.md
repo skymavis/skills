@@ -26,8 +26,8 @@ they actually were at decision time. Don't sanitize.
 
 ## Decision
 
-The decision in one or two sentences, active voice ("We will …"). Binding and immutable once
-`accepted`.
+The decision in one or two sentences, active voice ("We will …"). Binding once `accepted` — course
+changes only by supersession.
 
 ## Rationale
 
