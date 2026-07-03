@@ -582,3 +582,28 @@ def test_intra_doc_anchor_is_validated(built, capsys):
     p.write_text(body.replace("(#context)", "(#contxt)"))
     assert decisions.main(["check"], root=built) == 1
     assert "broken anchor" in capsys.readouterr().err
+
+
+# ── front matter: strict-YAML hazards ───────────────────────────────────────
+def test_unquoted_colon_in_summary_fails_check(root, capsys):
+    place(root, "0004", "product", "delta", summary="Two modes: channel and principal")
+    assert decisions.main(["check"], root=root) == 1
+    assert "unquoted ':'" in capsys.readouterr().err
+
+
+def test_quoted_colon_in_summary_passes_check(root):
+    place(root, "0004", "product", "delta", summary='"Two modes: channel and principal"')
+    assert decisions.main(["build", "--relink"], root=root) == 0
+    assert decisions.main(["check"], root=root) == 0
+
+
+def test_block_scalar_colon_passes_check(root):
+    place(root, "0004", "product", "delta", summary=">-\n  Two modes: channel and principal")
+    assert decisions.main(["build", "--relink"], root=root) == 0
+    assert decisions.main(["check"], root=root) == 0
+
+
+def test_unbalanced_quote_fails_check(root, capsys):
+    place(root, "0004", "product", "delta", summary='"half open')
+    assert decisions.main(["check"], root=root) == 1
+    assert "unbalanced quote" in capsys.readouterr().err
