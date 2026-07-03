@@ -89,6 +89,52 @@ LABEL_ID_RE = re.compile(r"`?(\d{4}|[A-Z]{4})`?$")  # link label that is just an
 FILE_ID_RE = re.compile(r"^(\d{4}|[A-Z]{4})-")  # leading ID in a filename
 STATUS_ICON = {"accepted": "🟢", "deprecated": "⚪", "superseded": "🔵"}
 
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+
+
+def strip_fences(text: str) -> str:
+    """Blank out fenced code blocks, preserving line structure."""
+    out: list[str] = []
+    fence = None
+    for line in text.splitlines():
+        m = FENCE_RE.match(line)
+        if fence is not None:
+            if m and m.group(1) == fence:
+                fence = None
+            out.append("")
+        elif m:
+            fence = m.group(1)
+            out.append("")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def strip_code(text: str) -> str:
+    """Blank out fenced blocks and inline code spans — a link inside code is syntax on
+    display, not a live link, so it must not be link-checked."""
+    text = strip_fences(text)
+    text = re.sub(r"``[^`]*``", "", text)
+    return re.sub(r"`[^`\n]*`", "", text)
+
+
+def heading_anchors(text: str) -> set[str]:
+    """GitHub-style anchor slugs for every heading, -N suffixes for duplicates."""
+    slugs: set[str] = set()
+    seen: dict[str, int] = {}
+    for line in strip_fences(text).splitlines():
+        m = HEADING_RE.match(line)
+        if not m:
+            continue
+        s = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", m.group(2))  # links -> label
+        s = s.replace("`", "").strip().lower()
+        s = re.sub(r"[^\w\- ]", "", s).replace(" ", "-")
+        n = seen.get(s, 0)
+        seen[s] = n + 1
+        slugs.add(s if n == 0 else f"{s}-{n}")
+    return slugs
+
 
 # ── layout ──────────────────────────────────────────────────────────────────
 # Everything the convention owns nests under docs/decisions/ (the umbrella) so the three
@@ -304,16 +350,32 @@ def check_links(root: Path, recs: list[dict], drafts: list[dict], refs: dict) ->
     index = index_path(root)
     if index.exists():
         files.append((index.name, index, index.read_text(encoding="utf-8")))
+    anchors_cache: dict[Path, set[str]] = {}
+
+    def anchors_of(p: Path) -> set[str]:
+        rp = p.resolve()
+        if rp not in anchors_cache:
+            anchors_cache[rp] = heading_anchors(rp.read_text(encoding="utf-8"))
+        return anchors_cache[rp]
+
     for name, path, text in files:
-        for _, target in LINK_RE.findall(text):
-            t = target.split("#", 1)[0].strip()
-            if not t or re.match(r"[a-z][a-z0-9+.-]*://", t) or t.startswith("mailto:"):
+        for _, target in LINK_RE.findall(strip_code(text)):
+            t, _sep, frag = target.partition("#")
+            t = t.strip()
+            if re.match(r"[a-z][a-z0-9+.-]*://", t) or t.startswith("mailto:"):
                 continue
-            if "…" in t or " " in t:
+            if "…" in target or " " in t:
                 continue
-            dest = path.parent / t
+            if not t and not frag:
+                continue
+            dest = path.parent / t if t else path
             if not dest.exists():
                 errs.append(f"{name}: broken link -> {target}")
+                continue
+            if frag and dest.suffix == ".md" and frag not in anchors_of(dest):
+                errs.append(f"{name}: broken anchor -> {target}")
+                continue
+            if not t:
                 continue
             cm = FILE_ID_RE.match(os.path.basename(t))
             if cm:

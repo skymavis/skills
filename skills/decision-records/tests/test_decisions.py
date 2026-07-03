@@ -533,3 +533,52 @@ def test_install_preserves_existing_entry_points(tmp_path):
     assert "node_modules/" in gi and "scripts/decisions.py" in gi  # appended, not clobbered
     decisions.install(tmp_path)  # idempotent: a second run adds no duplicate ignore line
     assert (tmp_path / ".gitignore").read_text().count("scripts/decisions.py") == 1
+
+
+# ── link check: code spans and anchors ──────────────────────────────────────
+def test_heading_anchors_github_slugs():
+    text = (
+        "# Appendix — Harnesses evaluated (research notes, non-binding)\n\n"
+        '## "dreaming"\n\n## Risks & open questions\n\n## dup\n\n## dup\n\n'
+        "```\n## not a heading\n```\n"
+    )
+    assert decisions.heading_anchors(text) == {
+        "appendix--harnesses-evaluated-research-notes-non-binding",
+        "dreaming",
+        "risks--open-questions",
+        "dup",
+        "dup-1",
+    }
+
+
+def test_link_inside_code_span_is_not_checked(built):
+    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p.write_text(p.read_text() + "\nUse the form `[term](../../glossary.md#term)` when linking.\n")
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_link_inside_fenced_block_is_not_checked(built):
+    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p.write_text(p.read_text() + "\n```md\n[term](../../nowhere.md#x)\n```\n")
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_broken_cross_file_anchor_is_flagged(built, capsys):
+    (built / "glossary.md").write_text("# Glossary\n\n## sandbox\n\nbody\n")
+    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    body = p.read_text()
+    p.write_text(body + "\nsee [sandbox](../../../glossary.md#sandbox).\n")
+    assert decisions.main(["check"], root=built) == 0
+    p.write_text(body + "\nsee [sandbox](../../../glossary.md#sandbxo).\n")
+    assert decisions.main(["check"], root=built) == 1
+    assert "broken anchor" in capsys.readouterr().err
+
+
+def test_intra_doc_anchor_is_validated(built, capsys):
+    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    body = p.read_text() + "\n## Context\n\nsee [Context](#context).\n"
+    p.write_text(body)
+    assert decisions.main(["check"], root=built) == 0
+    p.write_text(body.replace("(#context)", "(#contxt)"))
+    assert decisions.main(["check"], root=built) == 1
+    assert "broken anchor" in capsys.readouterr().err
