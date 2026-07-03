@@ -233,6 +233,48 @@ def parse_front_matter(text: str) -> dict:
     return data
 
 
+def front_matter_errors(recs: list[dict], drafts: list[dict]) -> list[str]:
+    """Plain-scalar YAML hazards that a spec-compliant parser (e.g. GitHub's renderer)
+    rejects but the tolerant parser above accepts — chiefly an unquoted ": " inside a
+    value, which YAML reads as a nested mapping and errors on mid-scalar."""
+    errs = []
+    for r in recs + drafts:
+        path = r["_path"]
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            continue
+        lines = text[3 : text.index("\n---", 3)].splitlines()
+        idx = 0
+        while idx < len(lines):
+            raw = lines[idx]
+            line = raw.split(" #", 1)[0].rstrip()
+            idx += 1
+            if not line.strip() or line.lstrip().startswith("#") or ":" not in line:
+                continue
+            key, _, val = line.partition(":")
+            key, val = key.strip(), val.strip()
+            if BLOCK_SCALAR_RE.match(val):  # block scalars may contain anything
+                key_indent = len(raw) - len(raw.lstrip(" "))
+                while idx < len(lines):
+                    nxt = lines[idx]
+                    if nxt.strip() and (len(nxt) - len(nxt.lstrip(" "))) <= key_indent:
+                        break
+                    idx += 1
+                continue
+            if not val or val in ("null", "~") or val[0] in "[{":
+                continue
+            if val[0] in "\"'":
+                if len(val) < 2 or val[-1] != val[0]:
+                    errs.append(f"{path.name}: front-matter '{key}' has an unbalanced quote")
+                continue
+            if ": " in val or val.endswith(":"):
+                errs.append(
+                    f"{path.name}: front-matter '{key}' has an unquoted ':' in its value —"
+                    " strict YAML parsers (GitHub) reject this; quote the value or rephrase"
+                )
+    return errs
+
+
 def split_front_matter(text: str) -> tuple[str, str]:
     """(head, body). Files without front-matter (e.g. threat-model.md) are all body."""
     if not text.startswith("---"):
@@ -1041,6 +1083,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
 
     if args.cmd == "check":
         problems = list(struct_errs)
+        problems += front_matter_errors(recs, drafts)
         problems += validate_no_breach(recs, drafts)
         problems += check_links(root, recs, drafts, refs)
         problems += validate_drafts(root, refs, drafts)
