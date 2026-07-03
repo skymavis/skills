@@ -557,7 +557,8 @@ def render_index(recs: list[dict], root: Path) -> str:
 
 **Agents read this file first**, then load only the records relevant to the task
 (filter on `type`, `status`, `tags`). Skip `archived/` (`superseded`/`deprecated`) unless
-tracing why a decision changed. Records are immutable once `accepted`.
+tracing why a decision changed. Records are held firm once `accepted` — course changes only by
+supersession; decider-approved maintenance edits are allowed.
 
 ## Identity & references
 - Identity is the global counter (`0001`, …), assigned in creation order. Permanent;
