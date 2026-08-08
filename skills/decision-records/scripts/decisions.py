@@ -37,6 +37,11 @@ Conventions this tool encodes and enforces:
   * An accepted decision may NEVER reference a draft (a breach); `promote` therefore
     promotes a whole reference-closure together and refuses a set that would breach.
   * INDEX.md and every path link are GENERATED build artifacts.
+  * A record's H1 reads `# NNNN — <title>`; a title carrying its own em-dash renders it as
+    a colon. `promote` carries the new ID into the heading, re-paths every hand-authored
+    relative link for the extra directory level, and retires the mnemonic from prose. It
+    edits nothing outside docs/ and nothing inside code — a 4-letter mnemonic doubles as a
+    plausible identifier — and lists what it left for a human instead.
 
 Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft IDs are 4 UPPERCASE letters):
     python scripts/decisions.py build                  # write docs/decisions/INDEX.md
@@ -117,6 +122,47 @@ def strip_code(text: str) -> str:
     text = strip_fences(text)
     text = re.sub(r"``[^`]*``", "", text)
     return re.sub(r"`[^`\n]*`", "", text)
+
+
+INLINE_CODE_RE = re.compile(r"``[^`]*``|`[^`\n]*`")
+
+
+def code_regions(text: str) -> list[tuple[int, int]]:
+    """Offset spans of every fenced block and inline code span — regions whose content is
+    syntax on display, not live markdown. Rewrites that reinterpret prose skip them."""
+    fenced: list[tuple[int, int]] = []
+    pos, fence, start = 0, None, 0
+    for line in text.splitlines(keepends=True):
+        m = FENCE_RE.match(line)
+        if fence is None:
+            if m:
+                fence, start = m.group(1), pos
+        elif m and m.group(1) == fence:
+            fenced.append((start, pos + len(line)))
+            fence = None
+        pos += len(line)
+    if fence is not None:  # unterminated fence — protect to end of file
+        fenced.append((start, pos))
+    spans = list(fenced)
+    spans += [
+        m.span()
+        for m in INLINE_CODE_RE.finditer(text)
+        if not any(a <= m.start() < b for a, b in fenced)
+    ]
+    return spans
+
+
+def sub_outside(pattern: re.Pattern, repl, text: str, spans, group: int = 0) -> str:
+    """`pattern.sub(repl, text)`, skipping matches whose `group` overlaps `spans`. The
+    callback sees original offsets (re.sub matches against the input), so the spans stay
+    valid. `group` narrows the test: a link's target is live even when its label is a code
+    span — ``[`../deploy.md`](../deploy.md)`` is a real link, not an example."""
+
+    def guarded(m: re.Match) -> str:
+        start, end = m.span(group)
+        return m.group(0) if any(a < end and start < b for a, b in spans) else repl(m)
+
+    return pattern.sub(guarded, text)
 
 
 def heading_anchors(text: str) -> set[str]:
@@ -496,22 +542,27 @@ def warn_unknown_types(root: Path, drafts: list[dict]) -> list[str]:
     ]
 
 
+def body_ref_ids(text: str) -> set:
+    """Every ID a record's body cites, bare (`CONF`) or already markdown-linked
+    ([`CONF`](...)). `build --relink` turns every bare ref into a link, so anything that
+    reads only the bare form goes blind the moment a build has run."""
+    _, body = split_front_matter(text)
+    ids = set(ID_RE.findall(body))
+    for label, _ in LINK_RE.findall(body):
+        m = LABEL_ID_RE.fullmatch(label.strip())
+        if m:
+            ids.add(m.group(1))
+    return ids
+
+
 def draft_references(d: dict, draft_ids: set) -> set:
     """The draft IDs this record points at — and that would survive into a decision:
-    front-matter relates_to/supersedes/superseded_by, plus body inline-code IDs whether
-    bare (`CONF`) or already markdown-linked ([`CONF`](...)). Linked refs are counted too,
-    so a relinked decision body cannot smuggle a draft reference past the breach check."""
+    front-matter relates_to/supersedes/superseded_by, plus body refs bare or linked."""
     refs = set(d.get("relates_to") or [])
     for k in ("supersedes", "superseded_by"):
         if d.get(k):
             refs.add(d[k])
-    _, body = split_front_matter(d["_text"])
-    refs |= set(ID_RE.findall(body))  # bare inline-code IDs
-    for label, _ in LINK_RE.findall(body):  # ...and markdown-linked IDs
-        m = LABEL_ID_RE.fullmatch(label.strip())
-        if m:
-            refs.add(m.group(1))
-    return refs & draft_ids
+    return (refs | body_ref_ids(d["_text"])) & draft_ids
 
 
 def validate_no_breach(recs: list[dict], drafts: list[dict]) -> list[str]:
@@ -598,12 +649,80 @@ def _md_files(root: Path) -> list[Path]:
     ]
 
 
+def heading_for(nid: str, title: str) -> str:
+    """`# NNNN — <title>`. A title carrying its own em-dash renders that dash as a colon,
+    so the heading holds exactly one (front-matter "Egress proxy — the outbound
+    chokepoint" heads 0033 as `# 0033 — Egress proxy: the outbound chokepoint`)."""
+    return f"# {nid} — {title.replace(' — ', ': ', 1)}"
+
+
+def retitle_heading(text: str, old_id: str, new_id: str, title: str = "") -> tuple[str, str | None]:
+    """Carry an ID change into the record's H1 — every accepted record reads
+    `# NNNN — <title>`, so a promoted draft whose heading still leads with its mnemonic
+    is off-convention. Returns (text, note) where a note flags the unusual shapes."""
+    head, body = split_front_matter(text)
+    lines = body.splitlines(keepends=True)
+    lead = re.compile(rf"`?({re.escape(old_id)}|{re.escape(new_id)})`?(?=$|[ \t])")
+    for i, bare in enumerate(strip_fences(body).splitlines()):  # a `#` in a fence is not an H1
+        m = re.match(r"^#[ \t]+(.*?)[ \t]*$", bare)
+        if not m:
+            continue
+        rest, nl = m.group(1), "\n" if lines[i].endswith("\n") else ""
+        hit = lead.match(rest)
+        if hit and hit.group(1) == new_id:
+            return text, None  # already numbered
+        if hit:
+            lines[i] = f"# {new_id}{rest[hit.end():]}{nl}"
+            return head + "".join(lines), None
+        lines[i] = f"# {new_id} — {rest}{nl}"
+        return head + "".join(lines), f"H1 did not lead with {old_id}; prefixed {new_id} — check it"
+    if not title:
+        return text, f"no H1 found — add one reading `# {new_id} — <title>`"
+    return head + heading_for(new_id, title) + "\n\n" + body.lstrip("\n"), "inserted the H1"
+
+
+def repath_links(text: str, old_dir: Path, new_dir: Path) -> str:
+    """Re-express the body's hand-authored relative links so they resolve from `new_dir`.
+    Promotion moves a record a directory deeper (drafts/ -> accepted/<type>/), so every
+    path a human wrote — `../../glossary.md`, a research memo, a repo-root script — needs
+    another `../`. ID links are regenerated by `build --relink`; these never were, and
+    promotion used to leave them one level short."""
+    head, body = split_front_matter(text)
+    spans = code_regions(body)
+
+    def moved(target: str) -> str | None:
+        path, sep, frag = target.partition("#")
+        if not path or path.startswith("/") or re.match(r"[a-z][a-z0-9+.-]*:", path):
+            return None  # anchor-only, absolute, or a URL/mailto — not ours to move
+        if "…" in target or " " in path:
+            return None  # a placeholder or a link title, not a path
+        out = os.path.relpath(os.path.normpath(old_dir / path), new_dir).replace(os.sep, "/")
+        return (out + "/" if path.endswith("/") else out) + sep + frag
+
+    def fix(m: re.Match) -> str:
+        label, target = m.group(1), m.group(2).strip()
+        new_target = moved(target)
+        if new_target is None or new_target == target:
+            return m.group(0)
+        # a link labelled with its own path (`[`../../deploy.md`](../../deploy.md)`) moves too
+        if label.strip().strip("`") == target:
+            label = label.replace(target, new_target)
+        return f"[{label}]({new_target})"
+
+    return head + sub_outside(LINK_RE, fix, body, spans, group=2)
+
+
 def rewrite_reference(root: Path, old: str, new: str) -> None:
     """Repoint every reference from ID `old` to ID `new` across the tree — front-matter
-    ref fields (de-duplicated) and inline-code body refs. Used when promotion changes a
-    draft's ID so inbound references don't dangle. `build --relink` then re-paths them."""
+    ref fields (de-duplicated), inline-code body refs, and, for a draft mnemonic, the bare
+    word in prose. Used when promotion changes a draft's ID so inbound references don't
+    dangle. `build --relink` then re-paths them."""
     link = re.compile(r"\[`" + re.escape(old) + r"`\]\([^)]*\)")
     bare = re.compile(r"`" + re.escape(old) + r"`")
+    # A mnemonic also reads as an ordinary word, so the prose sweep stays out of code
+    # (fences and inline spans) and out of link targets — an `AUTH = "auth"` in a fenced
+    # example is an identifier, and a path is a path.
+    prose = re.compile(r"\b" + re.escape(old) + r"\b") if DRAFT_ID_RE.match(old) else None
 
     def fix_field(m: re.Match) -> str:
         key, val = m.group(1), m.group(2).strip()
@@ -613,8 +732,10 @@ def rewrite_reference(root: Path, old: str, new: str) -> None:
                 i = new if i == old else i
                 if i not in out:
                     out.append(i)
-            return f"{key} [" + ", ".join(f'"{x}"' for x in out) + "]"
-        return f"{key} " + (f'"{new}"' if val.strip('"').strip("'") == old else val)
+            val = "[" + ", ".join(f'"{x}"' for x in out) + "]"
+        elif val.strip('"').strip("'") == old:
+            val = f'"{new}"'
+        return f"{key} {val}" if val else key  # an empty value keeps NO trailing space
 
     for p in _md_files(root):
         t = p.read_text(encoding="utf-8")
@@ -623,8 +744,29 @@ def rewrite_reference(root: Path, old: str, new: str) -> None:
             r"^(relates_to:|supersedes:|superseded_by:)(.*)$", fix_field, head, flags=re.M
         )
         body = bare.sub(f"`{new}`", link.sub(f"`{new}`", body))
+        if prose:
+            # front-matter prose too — a summary reading "behind AUTH's door" is a reference.
+            # `id:` is exempt: it is the file's own identity, not a reference to another.
+            head = "\n".join(
+                ln if ln.startswith("id:") else prose.sub(new, ln) for ln in head.split("\n")
+            )
+            spans = code_regions(body) + [m.span(2) for m in LINK_RE.finditer(body)]
+            body = sub_outside(prose, lambda _: new, body, spans)
         if head + body != t:
             p.write_text(head + body, encoding="utf-8")
+
+
+def rewrite_path(root: Path, src: Path, dest: Path) -> None:
+    """Repoint a spelled-out path to a record the move invalidated — `docs/decisions/
+    drafts/MEET-meeting-surface.md` in a research memo. The convention says reference by
+    ID and never hand-author a path, but prose that does is left dangling otherwise. Unlike
+    a mnemonic a full path is unambiguous, so this reaches inside code spans too — that is
+    where such a path is usually written."""
+    old, new = rel(src, root), rel(dest, root)  # docs-relative: any longer prefix survives
+    for p in _md_files(root):
+        t = p.read_text(encoding="utf-8")
+        if old in t:
+            p.write_text(t.replace(old, new), encoding="utf-8")
 
 
 def match_drafts(root: Path, query: str) -> list[Path]:
@@ -711,8 +853,7 @@ def classify_refs(d: dict, draft_ids: set, decision_ids: set, in_set: set) -> di
     relates = (set(d.get("relates_to") or []) & draft_ids) - in_set
     superby = (({d["superseded_by"]} if d.get("superseded_by") else set()) & draft_ids) - in_set
     supdraft = (({sup} if sup else set()) & draft_ids) - in_set
-    _, body = split_front_matter(d["_text"])
-    prose = (set(ID_RE.findall(body)) & draft_ids) - in_set
+    prose = (body_ref_ids(d["_text"]) & draft_ids) - in_set
     block = supdraft | prose
     return {
         "deref": (relates | superby) - block,
@@ -846,7 +987,7 @@ def promote(
     if deref:
         _do_deref(by_id, seeds, mapping)
 
-    dests = []
+    dests, moved = [], []
     for did, nid in mapping.items():
         d = by_id[did]
         slug = re.sub(r"^[A-Z]{4}-", "", d["_path"].stem)
@@ -855,12 +996,20 @@ def promote(
         text = set_field(text, "status", "accepted")  # the PR proposes; merge accepts
         for f in ("change_kind", "author"):  # draft-only fields
             text = drop_field(text, f)
+        text, note = retitle_heading(text, did, nid, str(d.get("title") or ""))
+        if note:
+            print(f"{dest.name}: {note}", file=sys.stderr)
+        text = repath_links(text, d["_path"].parent, dest.parent)  # accepted/ sits a level deeper
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(text, encoding="utf-8")
+        moved.append((d["_path"], dest))
         d["_path"].unlink()
         dests.append(dest)
+    for src, dest in moved:  # a hand-authored path to the file the move invalidated
+        rewrite_path(root, src, dest)
     for old, new in mapping.items():  # repoint refs (intra-set -> counters; inbound too)
         rewrite_reference(root, old, new)
+        report_residual_mnemonics(root, old, new)
 
     for s in seeds:  # --allow-replace: archive each decision a promoted draft supersedes
         sup = by_id[s].get("supersedes")
@@ -873,6 +1022,55 @@ def promote(
             (archived_dir(root) / r["_file"]).write_text(text, encoding="utf-8")
             r["_path"].unlink()
     return dests, None
+
+
+SWEEP_SKIP_DIRS = {
+    ".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache",
+    ".pytest_cache", ".tox", "dist", "build", "target", ".next", "docs",
+}  # fmt: skip
+SWEEP_SUFFIXES = {
+    ".py", ".rs", ".go", ".rb", ".java", ".kt", ".ts", ".tsx", ".js", ".jsx", ".sql", ".sh",
+    ".toml", ".yaml", ".yml", ".json", ".cfg", ".ini", ".txt", ".md", ".html", ".css", "",
+}  # fmt: skip
+
+
+def residual_mnemonics(repo: Path, old: str, limit: int = 30) -> list[str]:
+    """Where the retired mnemonic still reads OUTSIDE docs/ — code comments, justfile
+    recipes, test names. REPORTED, never rewritten: a 4-letter mnemonic doubles as a
+    plausible identifier (`AUTH = "auth"` in an enum, `MEET = "https://…"` as a scope
+    constant), and renaming an identifier is not what promoting a record means."""
+    word = re.compile(r"\b" + re.escape(old) + r"\b")
+    hits: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = [d for d in sorted(dirnames) if d not in SWEEP_SKIP_DIRS]
+        for name in sorted(filenames):
+            p = Path(dirpath) / name
+            if p.suffix not in SWEEP_SUFFIXES or p.is_symlink():
+                continue
+            try:
+                if p.stat().st_size > 2_000_000:  # a mnemonic doesn't live in a blob
+                    continue
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for n, line in enumerate(text.splitlines(), 1):
+                if word.search(line):
+                    hits.append(f"  {p.relative_to(repo)}:{n}: {line.strip()[:88]}")
+    extra = len(hits) - limit
+    return hits[:limit] + ([f"  …and {extra} more"] if extra > 0 else [])
+
+
+def report_residual_mnemonics(root: Path, old: str, new: str) -> None:
+    hits = residual_mnemonics(root.parent, old)
+    if not hits:
+        return
+    print(
+        f"\n{old} still reads outside docs/ — review by hand, and leave any identifier "
+        f"named {old} alone (it is not the record):",
+        file=sys.stderr,
+    )
+    print("\n".join(hits), file=sys.stderr)
+    print(f"Each one that means the record should now read {new}.\n", file=sys.stderr)
 
 
 def rename_draft(
@@ -894,9 +1092,13 @@ def rename_draft(
     slug = re.sub(r"^[A-Z]{4}-", "", src.stem)
     dest = src.with_name(f"{new}-{slug}.md")
     text = set_field(src.read_text(encoding="utf-8"), "id", new)
+    text, note = retitle_heading(text, old, new)  # the H1 carries the ID too
+    if note:
+        print(f"{dest.name}: {note}", file=sys.stderr)
     src.unlink()  # remove first (case-insensitive FS safe)
     dest.write_text(text, encoding="utf-8")
     rewrite_reference(root, old, new)
+    report_residual_mnemonics(root, old, new)
     return dest, None
 
 
@@ -1059,8 +1261,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
             print(err, file=sys.stderr)
             return 1
         print(f"renamed -> {dest.relative_to(root)}")
-        main(["build", "--relink"], root=root)
-        return 0
+        return main(["build", "--relink"], root=root)
 
     if args.cmd == "promote":
         queries = [tok for q in args.query for tok in re.split(r"[,\s]+", q) if tok]
@@ -1070,9 +1271,9 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
             return 1
         for d in dests:
             print(f"promoted -> {d.relative_to(root)}")
-        main(["build", "--relink"], root=root)
+        rc = main(["build", "--relink"], root=root)  # a link left broken must still exit 1
         print("finalize each record's front-matter (summary, supersedes/relates_to) in the PR")
-        return 0
+        return rc
 
     recs = load_records(root)
     drafts = load_drafts(root)

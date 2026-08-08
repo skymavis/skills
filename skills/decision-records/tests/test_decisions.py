@@ -400,6 +400,178 @@ def test_promote_no_match(built):
     assert decisions.main(["promote", "ZZZZ"], root=built) == 1
 
 
+# ── promote: the heading carries the new ID ─────────────────────────────────
+def test_promote_numbers_the_h1(built):
+    place_draft(built, "QWER", "security", "new-idea")
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    assert "# 0004 — new-idea" in body and "# QWER" not in body
+
+
+def test_promote_numbers_a_backticked_h1(built):
+    p = place_draft(built, "QWER", "security", "new-idea")
+    p.write_text(p.read_text().replace("# QWER — ", "# `QWER` — "))
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    dest = built / "decisions/accepted/security/0004-new-idea.md"
+    assert "# 0004 — new-idea" in dest.read_text()
+
+
+def test_heading_renders_an_em_dash_title_as_a_colon():
+    # 0033's front-matter title carries its own em-dash; the H1 holds exactly one.
+    assert decisions.heading_for("0033", "Egress proxy — the outbound chokepoint") == (
+        "# 0033 — Egress proxy: the outbound chokepoint"
+    )
+
+
+def test_promote_inserts_a_missing_h1_from_the_title(built, capsys):
+    p = place_draft(built, "QWER", "security", "new-idea")
+    p.write_text(p.read_text().replace("# QWER — new-idea\n\n", ""))
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    assert body.split("---\n", 2)[2].lstrip().startswith("# 0004 — new-idea")
+    assert "inserted the H1" in capsys.readouterr().err  # ...and says so
+
+
+def test_promote_flags_an_h1_that_does_not_lead_with_the_id(built, capsys):
+    p = place_draft(built, "QWER", "security", "new-idea")
+    p.write_text(p.read_text().replace("# QWER — new-idea", "# Something else entirely"))
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    assert "# 0004 — Something else entirely" in body
+    assert "check it" in capsys.readouterr().err
+
+
+def test_heading_ignores_a_hash_inside_a_fence():
+    text = "---\nid: ABCD\n---\n\n```py\n# ABCD is a comment\n```\n\n# ABCD — real\n"
+    out, note = decisions.retitle_heading(text, "ABCD", "0004")
+    assert "# ABCD is a comment" in out and "# 0004 — real" in out and note is None
+
+
+def test_rename_draft_carries_the_h1(built):
+    place_draft(built, "ABCD", "security", "thing")
+    assert decisions.main(["rename-draft-id", "ABCD", "ZZZZ"], root=built) == 0
+    assert "# ZZZZ — thing" in (built / "decisions/drafts/ZZZZ-thing.md").read_text()
+
+
+# ── promote: relative links follow the move ─────────────────────────────────
+def with_links(root):
+    """A repo whose docs carry the hand-authored path classes a promotion invalidates."""
+    (root / "glossary.md").write_text("# Glossary\n\n## sandbox\n\nbody\n", encoding="utf-8")
+    (root / "deploy.md").write_text("# Deploy\n\nbody\n", encoding="utf-8")
+    (root / "research").mkdir(parents=True, exist_ok=True)
+    (root / "research" / "memo.md").write_text("# Memo\n\nbody\n", encoding="utf-8")
+    (root.parent / "scripts").mkdir(parents=True, exist_ok=True)
+    (root.parent / "scripts" / "spike.py").write_text("x = 1\n", encoding="utf-8")
+
+
+def test_promote_repaths_every_relative_link_class(built):
+    with_links(built)
+    place_draft(
+        built,
+        "QWER",
+        "security",
+        "new-idea",
+        body=(
+            "A [sandbox](../../glossary.md#sandbox), the [memo](../../research/memo.md),\n"
+            "[deploy](../../deploy.md), and [`../../../scripts/spike.py`]"
+            "(../../../scripts/spike.py).\n\n## Heading\n\nAn [anchor](#heading) and "
+            "an [away](https://example.com/x) link.\n"
+        ),
+    )
+    assert decisions.main(["promote", "QWER"], root=built) == 0  # 1 if a link stayed broken
+    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    assert "(../../../glossary.md#sandbox)" in body  # accepted/<type>/ sits a level deeper
+    assert "(../../../research/memo.md)" in body
+    assert "(../../../deploy.md)" in body
+    # a link labelled with its own path moves label and target together
+    assert "[`../../../../scripts/spike.py`](../../../../scripts/spike.py)" in body
+    assert "(#heading)" in body and "(https://example.com/x)" in body  # neither is ours to move
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_promote_exits_nonzero_when_a_link_stays_broken(built, capsys):
+    place_draft(built, "QWER", "security", "new-idea", body="a [gone](../../nowhere.md) link.")
+    assert decisions.main(["promote", "QWER"], root=built) == 1  # promoted, but says so
+    assert "broken link" in capsys.readouterr().err
+    assert (built / "decisions/accepted/security/0004-new-idea.md").exists()
+
+
+def test_promote_repoints_a_spelled_out_path(built):
+    place_draft(built, "QWER", "security", "new-idea")
+    (built / "research").mkdir(parents=True, exist_ok=True)
+    (built / "research" / "memo.md").write_text(
+        "# Memo\n\nFeeds the draft (`docs/decisions/drafts/QWER-new-idea.md`).\n", encoding="utf-8"
+    )
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    memo = (built / "research" / "memo.md").read_text()
+    assert "`docs/decisions/accepted/security/0004-new-idea.md`" in memo
+
+
+# ── promote: the mnemonic stops reading anywhere ────────────────────────────
+def test_promote_converts_bare_prose_mnemonics(built):
+    place_draft(built, "QWER", "security", "door", body="QWER fixes the door; see `QWER`.")
+    place_draft(built, "EFGH", "architecture", "referrer", body="Behind QWER's door.")
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    record = (built / "decisions/accepted/security/0004-door.md").read_text()
+    assert record.count("QWER") == 0 and "0004 fixes the door" in record  # self-refs too
+    assert "Behind 0004's door." in (built / "decisions/drafts/EFGH-referrer.md").read_text()
+
+
+def test_promote_converts_the_mnemonic_in_front_matter_prose(built):
+    place_draft(built, "QWER", "security", "door")
+    p = place_draft(built, "EFGH", "architecture", "referrer")
+    p.write_text(
+        p.read_text().replace("type:", 'summary: "Behind QWER\'s door"\ntype:', 1),
+        encoding="utf-8",
+    )
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    assert 'summary: "Behind 0004\'s door"' in p.read_text()
+
+
+def test_prose_sweep_spares_code_and_link_targets(built):
+    # The hazard that made this manual: a mnemonic also reads as a plausible identifier.
+    place_draft(built, "QWER", "security", "door")
+    place_draft(
+        built,
+        "EFGH",
+        "architecture",
+        "referrer",
+        body=(
+            '```py\nQWER = "qwer"  # an enum member, not the record\n```\n\n'
+            "Inline `QWER_TOKEN` and the [memo](../../research/notes-QWER.md).\n"
+        ),
+    )
+    (built / "research").mkdir(parents=True, exist_ok=True)
+    (built / "research" / "notes-QWER.md").write_text("# Notes\n\nbody\n", encoding="utf-8")
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    ref = (built / "decisions/drafts/EFGH-referrer.md").read_text()
+    assert 'QWER = "qwer"' in ref  # a fenced identifier keeps its name
+    assert "`QWER_TOKEN`" in ref  # ...and so does a longer identifier
+    assert "(../../research/notes-QWER.md)" in ref  # a path is a path
+
+
+def test_residual_mnemonics_reports_code_but_never_edits_it(built, capsys):
+    src = built.parent / "src"
+    src.mkdir(parents=True, exist_ok=True)
+    (src / "constants.py").write_text('QWER = "qwer"\n', encoding="utf-8")
+    place_draft(built, "QWER", "security", "door")
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    assert (src / "constants.py").read_text() == 'QWER = "qwer"\n'  # untouched
+    err = capsys.readouterr().err
+    assert "src/constants.py:1" in err and "leave any identifier named QWER alone" in err
+
+
+# ── promote: front matter round-trips clean ─────────────────────────────────
+def test_blank_ref_fields_keep_no_trailing_space(built):
+    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p.write_text(p.read_text().replace("supersedes: null", "supersedes:"))
+    place_draft(built, "QWER", "security", "new-idea")
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    # the pre-commit `trailing-whitespace` hook would strip these straight back out
+    assert "supersedes:\n" in p.read_text() and "supersedes: \n" not in p.read_text()
+    assert not [ln for ln in p.read_text().splitlines() if ln != ln.rstrip()]
+
+
 # ── deref / blocking / replace ──────────────────────────────────────────────
 def test_promote_deref_inverts_frontmatter_edge(built):
     place_draft(built, "AAAA", "architecture", "alpha", relates_to='["BBBB"]')
@@ -437,6 +609,20 @@ def test_deref_rejected_when_blocking(built):
     place_draft(built, "AAAA", "architecture", "alpha", body="see `BBBB`.")
     place_draft(built, "BBBB", "security", "beta")
     assert decisions.main(["promote", "--deref", "AAAA"], root=built) == 1
+
+
+def test_relinked_body_ref_still_blocks_deref(built):
+    # `build --relink` turns every bare body ref into a markdown link. A blocking check
+    # that reads only the bare form goes blind after the first build, and --deref then
+    # promotes into a breach `check` catches afterwards. It must refuse up front.
+    place_draft(built, "AAAA", "architecture", "alpha", relates_to='["BBBB"]', body="see `BBBB`.")
+    place_draft(built, "BBBB", "security", "beta")
+    assert decisions.main(["build", "--relink"], root=built) == 0
+    assert "[`BBBB`](" in (built / "decisions/drafts/AAAA-alpha.md").read_text()  # now a link
+    dests, err = decisions.promote(built, ["AAAA"])
+    assert dests is None and "blocked" in err  # not "dereferenceable"
+    assert decisions.main(["promote", "--deref", "AAAA"], root=built) == 1
+    assert (built / "decisions/drafts/AAAA-alpha.md").exists()  # nothing moved
 
 
 def test_supersedes_decision_needs_replace_then_archives(built):
