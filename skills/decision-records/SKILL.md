@@ -70,6 +70,13 @@ would breach and prints exactly how to fix it (co-promote, `--deref`, or `--allo
 copy-paste prompt. Before any promotion the tool refuses — or any supersession — read
 **[references/promotion.md](references/promotion.md)** for the mechanics.
 
+Promotion changes a record's ID *and* its directory, and `promote` carries both through the tree:
+the H1, every relative link (one level deeper now), the mnemonic in prose, and any spelled-out path
+to the draft file. It stops at `docs/`, and it never edits code — a 4-letter mnemonic also reads as
+an identifier. Mentions outside `docs/` are **listed** after the run for you to work through by
+hand; leave any identifier that merely shares the name. `mdformat` reflows the rewritten paragraphs
+on commit.
+
 ## Adopting this in a repo
 
 Run this skill's `decisions.py install [repo]` from the target repo. (`repo` defaults to the current
