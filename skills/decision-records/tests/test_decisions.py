@@ -382,6 +382,40 @@ def test_promote_cycle_needs_both(built):
     assert decisions.main(["check"], root=built) == 0
 
 
+def test_promote_assigns_counters_in_argument_order(built):
+    # Counters follow the arguments, not their alphabetical order: a co-promoted set often
+    # has one record the others build on, and it has to be nameable as the earlier one.
+    place_draft(built, "ZZZZ", "security", "foundation", body="named by `AAAA`.")
+    place_draft(built, "AAAA", "architecture", "built-on-it", body="builds on `ZZZZ`.")
+    assert decisions.main(["promote", "ZZZZ", "AAAA"], root=built) == 0
+    assert (built / "decisions/accepted/security/0004-foundation.md").exists()
+    assert (built / "decisions/accepted/architecture/0005-built-on-it.md").exists()
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_promote_reverses_with_the_arguments(built):
+    # The same pair the other way round — proof the order is read, not incidental.
+    place_draft(built, "ZZZZ", "security", "foundation", body="named by `AAAA`.")
+    place_draft(built, "AAAA", "architecture", "built-on-it", body="builds on `ZZZZ`.")
+    assert decisions.main(["promote", "AAAA", "ZZZZ"], root=built) == 0
+    assert (built / "decisions/accepted/architecture/0004-built-on-it.md").exists()
+    assert (built / "decisions/accepted/security/0005-foundation.md").exists()
+
+
+def test_blocking_message_suggests_a_command_that_keeps_the_requested_order(built):
+    # The refusal prints a command to run. It must be a valid promotion AND must leave the
+    # requested draft with the first counter — the caller's order survives the round-trip.
+    place_draft(built, "ZZZZ", "security", "foundation", body="see `AAAA`.")
+    place_draft(built, "AAAA", "architecture", "dep")
+    dests, err = decisions.promote(built, ["ZZZZ"])
+    assert dests is None and "promote ZZZZ AAAA" in err
+    argv = err.split("Run:\n  ")[1].splitlines()[0].split()[2:]  # drop `python scripts/…`
+    assert decisions.main(argv, root=built) == 0
+    assert (built / "decisions/accepted/security/0004-foundation.md").exists()
+    assert (built / "decisions/accepted/architecture/0005-dep.md").exists()
+    assert decisions.main(["check"], root=built) == 0
+
+
 def test_promote_comma_separated(built):
     place_draft(built, "ABCD", "security", "a", body="see `EFGH`.")
     place_draft(built, "EFGH", "architecture", "b")

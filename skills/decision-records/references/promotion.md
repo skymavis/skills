@@ -29,7 +29,8 @@ draft** (a breach). When promoting a draft that references other drafts, each re
 - `promote <name…> --allow-replace` confirms archiving the decisions the draft `supersedes` (the IDs
   are shown in the preview, so the flag is just intent).
 - Promote several at once, space- or comma-separated. Refs *within* the set become counter↔counter
-  automatically.
+  automatically, and the counters are assigned **in the order the arguments are given** — name the
+  record the others build on first and it reads as the earlier decision.
 
 **Invariant:** after any promotion, everything the promoted record pointed at refers back to it —
 via the inverted edge (`--deref`) or a counter rewrite (co-promoted).
