@@ -36,6 +36,8 @@ Conventions this tool encodes and enforces:
     records, drafts, and other docs) into a correct relative link and self-heals on moves.
   * An accepted decision may NEVER reference a draft (a breach); `promote` therefore
     promotes a whole reference-closure together and refuses a set that would breach.
+    Co-promoted drafts take their counters in the order the arguments were given, so the
+    record the others build on can be named first and read as the earlier decision.
   * INDEX.md and every path link are GENERATED build artifacts.
   * A record's H1 reads `# NNNN — <title>`; a title carrying its own em-dash renders it as
     a colon. `promote` carries the new ID into the heading, re-paths every hand-authored
@@ -48,7 +50,8 @@ Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft IDs are 4
     python scripts/decisions.py build --relink         # also refresh path links everywhere
     python scripts/decisions.py check                  # validate only; exit 1 if stale (CI)
     python scripts/decisions.py rename-draft-id <name> <NEW>   # re-ID a draft, repoint refs
-    python scripts/decisions.py promote CONF [TIER ...]        # promote draft(s) -> accepted/
+    python scripts/decisions.py promote CONF [TIER ...]        # promote draft(s), counters in
+                                                               # the order given -> accepted/
     python scripts/decisions.py promote CONF --deref           # invert refs, promote alone
     python scripts/decisions.py promote CONF --allow-replace   # also archive what it supersedes
     python scripts/decisions.py install [repo]                 # adopt: symlink + scaffold + check
@@ -874,14 +877,22 @@ def blocking_closure(by_id: dict, seeds: set, decision_ids: set) -> set:
     return seen
 
 
-def _highlight(ids: set, seeds: set) -> str:
-    return "\n".join(f"  → {i}  (requested)" if i in seeds else f"    {i}" for i in sorted(ids))
+def _suggested_order(bclosure: set, seeds: list) -> list:
+    """The order a suggested command should promote in: the requested drafts first, in the
+    order they were given, then what the blocking set pulled in. Counters follow this order,
+    so re-running the suggestion keeps the counters the caller asked for."""
+    return list(seeds) + sorted(bclosure - set(seeds))
 
 
-def _blocking_message(bclosure: set, seeds: set, block: set) -> str:
-    cmd = "python scripts/decisions.py promote " + " ".join(sorted(bclosure))
+def _highlight(ids: list, seeds: list) -> str:
+    return "\n".join(f"  → {i}  (requested)" if i in seeds else f"    {i}" for i in ids)
+
+
+def _blocking_message(bclosure: set, seeds: list, block: set) -> str:
+    ordered = _suggested_order(bclosure, seeds)
+    cmd = "python scripts/decisions.py promote " + " ".join(ordered)
     prompt = (
-        f"Promote draft(s) {', '.join(sorted(seeds))} with scripts/decisions.py. They are "
+        f"Promote draft(s) {', '.join(seeds)} with scripts/decisions.py. They are "
         f"blocked: as accepted decisions they would reference draft(s) "
         f"{', '.join(sorted(block))} via prose or `supersedes`, which cannot be "
         f"dereferenced. Either co-promote the whole set — `{cmd}` — or restructure the "
@@ -890,8 +901,9 @@ def _blocking_message(bclosure: set, seeds: set, block: set) -> str:
     )
     return (
         "blocked: a promoted decision would reference draft(s) via prose or `supersedes`,\n"
-        "which can't be dereferenced. Promote the whole blocking set together:\n"
-        + _highlight(bclosure, seeds)
+        "which can't be dereferenced. Promote the whole blocking set together\n"
+        "(counters are assigned in the order listed):\n"
+        + _highlight(ordered, seeds)
         + f"\n\nRun:\n  {cmd}\n"
         + "\nOr copy this prompt to an agent to fix it:\n"
         + "─" * 70
@@ -902,8 +914,8 @@ def _blocking_message(bclosure: set, seeds: set, block: set) -> str:
     )
 
 
-def _deref_message(deref: set, seeds: set) -> str:
-    cmd = "python scripts/decisions.py promote " + " ".join(sorted(seeds)) + " --deref"
+def _deref_message(deref: set, seeds: list) -> str:
+    cmd = "python scripts/decisions.py promote " + " ".join(seeds) + " --deref"
     return (
         "dereferenceable: the only cross-draft refs are front-matter "
         f"relates_to/superseded_by to {', '.join(sorted(deref))}.\n"
@@ -912,21 +924,21 @@ def _deref_message(deref: set, seeds: set) -> str:
     )
 
 
-def _allow_replace_message(need: set, seeds: set) -> str:
-    cmd = "python scripts/decisions.py promote " + " ".join(sorted(seeds)) + " --allow-replace"
+def _allow_replace_message(need: set, seeds: list) -> str:
+    cmd = "python scripts/decisions.py promote " + " ".join(seeds) + " --allow-replace"
     return (
-        f"promoting {', '.join(sorted(seeds))} would supersede existing decision(s) "
+        f"promoting {', '.join(seeds)} would supersede existing decision(s) "
         f"{', '.join(sorted(need))},\nwhich will be archived. Re-run with --allow-replace "
         f" to confirm:\n  {cmd}"
     )
 
 
-def _do_deref(by_id: dict, seeds: set, mapping: dict) -> None:
+def _do_deref(by_id: dict, order: list, mapping: dict) -> None:
     """Invert each dereferenceable edge: drop it from the promoted draft and record the
     draft's new counter on the referenced draft, restoring the link when that draft is
     later promoted. Mutates _text; writes the referenced (still-draft) files."""
-    draft_ids, touched = set(by_id), set()
-    for s in seeds:
+    draft_ids, seeds, touched = set(by_id), set(order), set()
+    for s in order:
         d, nid = by_id[s], mapping[s]
         for t in (set(d.get("relates_to") or []) & draft_ids) - seeds:
             d["_text"] = remove_from_list_field(d["_text"], "relates_to", t)
@@ -944,25 +956,30 @@ def _do_deref(by_id: dict, seeds: set, mapping: dict) -> None:
 def promote(
     root: Path, queries: list[str], deref: bool = False, allow_replace: bool = False, input_fn=input
 ) -> tuple[list[Path] | None, str | None]:
-    """Promote draft(s) into decisions/ as the next counters. Refuses with actionable
-    guidance when the set isn't self-contained; `--deref` inverts front-matter edges so a
-    draft promotes alone; `--allow-replace` confirms archiving the decisions it supersedes."""
+    """Promote draft(s) into decisions/ as the next counters, assigned in the order the
+    queries were given — co-promoting `A B` makes A the lower counter. Refuses with
+    actionable guidance when the set isn't self-contained; `--deref` inverts front-matter
+    edges so a draft promotes alone; `--allow-replace` confirms archiving what it
+    supersedes."""
     recs = load_records(root)
     by_id = {d["id"]: d for d in load_drafts(root)}
     decision_ids = {r["id"] for r in recs}
 
-    seeds = set()
+    order: list[str] = []  # argument order, deduped — the counters follow it
     for q in queries:
         src, err = select_draft(root, q, input_fn)
         if err:
             return None, err
-        seeds.add(parse_front_matter(src.read_text(encoding="utf-8")).get("id"))
-    bad = [by_id[i]["_file"] for i in seeds if not TYPE_RE.match(str(by_id[i].get("type") or ""))]
+        did = parse_front_matter(src.read_text(encoding="utf-8")).get("id")
+        if did not in order:
+            order.append(did)
+    seeds = set(order)
+    bad = [by_id[i]["_file"] for i in order if not TYPE_RE.match(str(by_id[i].get("type") or ""))]
     if bad:
         return None, f"invalid type in {', '.join(bad)}"
 
     deref_t, block_t, supersedes_dec = set(), set(), set()
-    for s in seeds:
+    for s in order:
         c = classify_refs(by_id[s], set(by_id), decision_ids, seeds)
         deref_t |= c["deref"]
         block_t |= c["block"]
@@ -970,7 +987,7 @@ def promote(
     deref_t -= block_t
 
     if block_t:
-        msg = _blocking_message(blocking_closure(by_id, seeds, decision_ids), seeds, block_t)
+        msg = _blocking_message(blocking_closure(by_id, seeds, decision_ids), order, block_t)
         if deref:
             msg = (
                 f"--deref can't proceed — blocked by prose/`supersedes` refs to "
@@ -978,14 +995,14 @@ def promote(
             )
         return None, msg
     if supersedes_dec and not allow_replace:
-        return None, _allow_replace_message(supersedes_dec, seeds)
+        return None, _allow_replace_message(supersedes_dec, order)
     if deref_t and not deref:
-        return None, _deref_message(deref_t, seeds)
+        return None, _deref_message(deref_t, order)
 
     base = int(next_counter(recs))
-    mapping = {did: f"{base + i:04d}" for i, did in enumerate(sorted(seeds))}
+    mapping = {did: f"{base + i:04d}" for i, did in enumerate(order)}
     if deref:
-        _do_deref(by_id, seeds, mapping)
+        _do_deref(by_id, order, mapping)
 
     dests, moved = [], []
     for did, nid in mapping.items():
@@ -1011,7 +1028,7 @@ def promote(
         rewrite_reference(root, old, new)
         report_residual_mnemonics(root, old, new)
 
-    for s in seeds:  # --allow-replace: archive each decision a promoted draft supersedes
+    for s in order:  # --allow-replace: archive each decision a promoted draft supersedes
         sup = by_id[s].get("supersedes")
         if allow_replace and sup in supersedes_dec:
             r = next(x for x in recs if x["id"] == sup)
@@ -1226,7 +1243,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "promote", help="move one or more drafts into decisions/ as the next counters"
     )
     pr.add_argument(
-        "query", nargs="+", help="one or more draft IDs/names (space- or comma-separated)"
+        "query",
+        nargs="+",
+        help="one or more draft IDs/names (space- or comma-separated); counters are "
+        "assigned in the order given",
     )
     pr.add_argument(
         "--deref",
