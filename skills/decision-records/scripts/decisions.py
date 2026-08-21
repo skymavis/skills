@@ -28,6 +28,10 @@ Conventions this tool encodes and enforces:
   * Identity is the global counter ID (`0001`, …) for decisions; a 4-UPPERCASE-letter
     ID (`CONF`) for drafts — mint a mnemonic of the draft's topic; `check` enforces
     format + uniqueness. Permanent and canonical; the only thing cross-refs use.
+  * A counter is minted against one tree, so two branches can each mint the same one
+    and stay green until they meet. `check` therefore also reads `origin/main` and warns
+    (never fails) when an ID there already names a different file. Read-only, never
+    fetches, silent when the ref is not on disk — see `warn_upstream_collisions`.
   * `type` is any lowercase slug — the set is OPEN; your accepted/<type>/ subdirs are the
     suggested set (architecture/product/security, or policy/legal/finance for governance).
     It lives in front-matter and, for a decision, equals its directory. `status` -> lifecycle.
@@ -63,6 +67,7 @@ import argparse
 import difflib
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -543,6 +548,121 @@ def warn_unknown_types(root: Path, drafts: list[dict]) -> list[str]:
         for d in drafts
         if TYPE_RE.match(str(d.get("type") or "")) and d.get("type") not in known
     ]
+
+
+# ── upstream collisions ─────────────────────────────────────────────────────
+# Every check above reads one tree, so a duplicate ID can only be seen once both
+# copies are in it: after a rebase or a merge. On a branch the ID you minted is
+# unique and everything is green, and the collision comes into being when the trees
+# meet — by which point the record is written and cross-referenced. This asks the
+# question one tree earlier, against the origin/main already on disk.
+#
+# It warns and never fails: origin/main moves under a branch on every fetch, so a gate
+# here would fail correct work for a reason its author cannot act on. It never fetches:
+# a hook that reaches the network is a hook people turn off. And when the ref is simply
+# not there — a fresh clone, an offline machine, a CI checkout that took only the
+# branch — it reports nothing, because a missing ref is not evidence of anything.
+#
+# lanh-ai runs the same shape over its PRD and migration counters from a shared
+# scripts/upstream.py. This copy is deliberate: a skill has to run in a repo that has
+# none of that. Keep the two in step.
+UPSTREAM_REF = "origin/main"
+
+
+def _git(directory: Path, *args: str) -> str | None:
+    """stdout of a read-only git command, or None for any non-zero exit. Every caller
+    treats failure as "no answer", so the reasons collapse: no git, no work tree, an
+    unfetched ref, a path absent from that tree."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(directory), *args], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return None
+    return done.stdout.rstrip("\n") if done.returncode == 0 else None
+
+
+def upstream_files(directory: Path, ref: str = UPSTREAM_REF) -> list[str] | None:
+    """Every file `ref` holds under `directory`, posix-relative to it, recursive.
+
+    None means there is nothing to compare against — not a git work tree, or `ref` is
+    not fetched here — and callers fall silent on it. An empty list is different: the
+    ref is there and holds no such directory.
+
+    Read-only plumbing against the object store; nothing is checked out and no ref
+    moves, so this is safe to run from any of a repo's worktrees.
+    """
+    if not directory.is_dir():
+        return None
+    root = _git(directory, "rev-parse", "--show-toplevel")
+    if root is None:
+        return None
+    rel = directory.resolve().relative_to(Path(root).resolve()).as_posix()
+    if _git(directory, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") is None:
+        return None
+    # --full-tree, or ls-tree quietly limits its output to the cwd's own prefix, which
+    # — run from inside the very directory it was handed as the tree-ish — is nothing.
+    listing = _git(directory, "ls-tree", "-r", "--full-tree", "--name-only", "-z", f"{ref}:{rel}")
+    return [] if listing is None else [name for name in listing.split("\0") if name]
+
+
+def collision_warnings(
+    family: str,
+    local: dict,
+    upstream: dict,
+    free: str | None = None,
+    fix: str = "renumber",
+) -> list[str]:
+    """One WARN line per ID both trees use for a *different* file. Same ID and same
+    filename is that record, edited or moved — not a collision. `free`, where the family
+    numbers itself, is the ID neither tree has taken, so the fix reads as an instruction
+    rather than a lookup."""
+    return [
+        f"WARN {family}: {ident} is taken on {UPSTREAM_REF} by {upstream[ident]}, and here by "
+        f"{name} — {f'{fix} to {free}' if free else f'{fix} it'} before the trees meet"
+        for ident, name in sorted(local.items())
+        if upstream.get(ident) not in (None, name)
+    ]
+
+
+def next_free_counter(ids: set) -> str | None:
+    """One past the highest counter either tree has used. Both trees deliberately: the
+    number free on origin/main alone can be the one this branch already took, and a fix
+    that collides again is worse than none."""
+    nums = {int(i) for i in ids if str(i).isdigit()}
+    return f"{max(nums) + 1:04d}" if nums else None
+
+
+def warn_upstream_collisions(root: Path) -> list[str]:
+    """Counters and draft IDs origin/main already gives to a different filename.
+
+    Filenames only — no record is parsed, on either side — so a record whose
+    front-matter is still being written reads like any other. A record that moved
+    accepted/ -> archived/ keeps its filename and is correctly silent.
+    """
+    names = upstream_files(decisions_dir(root))
+    if names is None:
+        return []
+
+    def split(paths: list[str]) -> tuple[dict, dict]:
+        counters: dict = {}
+        mnemonics: dict = {}
+        for rel in sorted(paths):
+            head, _, base = rel.rpartition("/")
+            if head.split("/")[0] == "drafts" and not base.startswith("_"):
+                if m := FILE_ID_RE.match(base):
+                    if DRAFT_ID_RE.match(m.group(1)):
+                        mnemonics.setdefault(m.group(1), base)
+            elif head.split("/")[0] in ("accepted", "archived") and RECORD_RE.match(base):
+                counters.setdefault(base[:4], base)
+        return counters, mnemonics
+
+    base = decisions_dir(root)
+    ours = split([p.relative_to(base).as_posix() for p in sorted(base.rglob("*.md"))])
+    theirs = split(names)
+    return collision_warnings(
+        "decisions", ours[0], theirs[0], free=next_free_counter(set(ours[0]) | set(theirs[0]))
+    ) + collision_warnings("drafts", ours[1], theirs[1], fix="re-mint")
 
 
 def body_ref_ids(text: str) -> set:
@@ -1299,6 +1419,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     drafts = load_drafts(root)
     refs = ref_map(recs, drafts)
     for w in warn_unknown_types(root, drafts):  # non-blocking: typo / new-type heads-up
+        print(w, file=sys.stderr)
+    for w in warn_upstream_collisions(root):  # non-blocking: an ID origin/main already took
         print(w, file=sys.stderr)
     struct_errs = validate_records(recs, refs)
     out = render_index(recs, root)

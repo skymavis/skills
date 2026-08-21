@@ -5,6 +5,8 @@ Option B: the tool takes an injectable `root` (the docs/ dir), so every test run
 against a synthetic tree under tmp_path and never touches the real repo.
 """
 
+import subprocess
+
 import decisions
 import pytest
 
@@ -827,3 +829,102 @@ def test_unbalanced_quote_fails_check(root, capsys):
     place(root, "0004", "product", "delta", summary='"half open')
     assert decisions.main(["check"], root=root) == 1
     assert "unbalanced quote" in capsys.readouterr().err
+
+
+# ── upstream collisions ─────────────────────────────────────────────────────
+# Every check above reads one tree, so a duplicate ID can only fail once both copies
+# are in it — after a rebase, by which point the record is written and cross-referenced.
+# These cover the same question asked one tree earlier, against origin/main. It warns
+# and never gates; see `warn_upstream_collisions`.
+def branch_off(root, publish_upstream):
+    """origin/main holds 0001..0003 and the draft CONF, all under their own names."""
+    place_draft(root, "CONF", "architecture", "confidence")
+    assert decisions.main(["build", "--relink"], root=root) == 0
+    publish_upstream(root.parent)
+    return root
+
+
+def check(root, capsys):
+    capsys.readouterr()
+    return decisions.main(["check"], root=root), capsys.readouterr()
+
+
+def test_a_counter_taken_upstream_by_another_file_warns(root, capsys, publish_upstream):
+    branch_off(root, publish_upstream)
+    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was.rename(was.with_name("0002-something-else.md"))
+    decisions.main(["build", "--relink"], root=root)
+    _, out = check(root, capsys)
+    assert (
+        "WARN decisions: 0002 is taken on origin/main by 0002-beta.md, and here by "
+        "0002-something-else.md — renumber to 0004 before the trees meet" in out.err
+    )
+
+
+def test_a_draft_id_taken_upstream_by_another_file_warns(root, capsys, publish_upstream):
+    branch_off(root, publish_upstream)
+    was = root / "decisions" / "drafts" / "CONF-confidence.md"
+    was.rename(was.with_name("CONF-a-different-idea.md"))
+    decisions.main(["build", "--relink"], root=root)
+    _, out = check(root, capsys)
+    assert (
+        "WARN drafts: CONF is taken on origin/main by CONF-confidence.md, and here by "
+        "CONF-a-different-idea.md — re-mint it before the trees meet" in out.err
+    )
+
+
+def test_the_same_id_in_the_same_file_is_not_a_collision(root, capsys, publish_upstream):
+    """That is the record, edited — the case every branch is in."""
+    branch_off(root, publish_upstream)
+    code, out = check(root, capsys)
+    assert code == 0 and "WARN" not in out.err
+
+
+def test_archiving_a_record_keeps_its_filename_and_stays_silent(root, capsys, publish_upstream):
+    """accepted/<type>/ -> archived/ moves a record without renaming it."""
+    branch_off(root, publish_upstream)
+    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    place(root, "0002", "architecture", "beta", lifecycle="archived", status="superseded")
+    was.unlink()
+    decisions.main(["build", "--relink"], root=root)
+    _, out = check(root, capsys)
+    assert "WARN decisions" not in out.err
+
+
+def test_an_id_free_upstream_is_silent(root, capsys, publish_upstream):
+    branch_off(root, publish_upstream)
+    place(root, "0004", "architecture", "delta")
+    place_draft(root, "TIER", "architecture", "tiering")
+    decisions.main(["build", "--relink"], root=root)
+    code, out = check(root, capsys)
+    assert code == 0 and "WARN" not in out.err
+
+
+def test_a_missing_origin_main_skips_silently(root, capsys, publish_upstream):
+    """A fresh clone, an offline machine, a CI checkout that fetched only the branch."""
+    branch_off(root, publish_upstream)
+    subprocess.run(
+        ["git", "-C", str(root.parent), "update-ref", "-d", "refs/remotes/origin/main"], check=True
+    )
+    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was.rename(was.with_name("0002-something-else.md"))
+    decisions.main(["build", "--relink"], root=root)
+    code, out = check(root, capsys)
+    assert code == 0 and out.err == ""
+
+
+def test_a_tree_outside_git_skips_silently(built, capsys, tmp_path):
+    assert not (tmp_path / ".git").exists()
+    code, out = check(built, capsys)
+    assert code == 0 and out.err == ""
+
+
+def test_the_warning_does_not_change_the_exit_code(root, capsys, publish_upstream):
+    """Warning and errors are independent: neither creates nor masks the other."""
+    branch_off(root, publish_upstream)
+    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was.rename(was.with_name("0002-something-else.md"))  # 0003 cites 0002: links go stale
+    code, out = check(root, capsys)
+    assert code == 1
+    assert "WARN decisions: 0002 is taken on origin/main by 0002-beta.md" in out.err
+    assert "broken link" in out.err or "stale" in out.err

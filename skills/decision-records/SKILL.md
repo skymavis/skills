@@ -55,6 +55,12 @@ by writing the bare ID as inline code — `` `0006` `` (decision) or `` `CONF` `
 hand-author a path — `build --relink` generates and self-heals every link across every `docs/*.md`
 (records, drafts, and other docs like `threat-model.md`).
 
+**A collision with `origin/main` is warned about, not gated.** Uniqueness is checked against one
+tree, so two branches can each mint `0044` and both stay green until they meet. `check` therefore
+also reads the `origin/main` already on disk and prints a `WARN` line when an ID there names a
+different file, along with the next free counter. It never fetches, never fails the run, and says
+nothing at all when that ref is not present — a fresh clone or an offline machine is not a finding.
+
 ## Promoting drafts
 
 **Promotion requires explicit human sign-off.** Promoting is a finalizing, semi-irreversible act
