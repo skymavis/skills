@@ -404,8 +404,20 @@ def reference_targets(
     return [(p, own.get(p)) for p in _md_files(root)]
 
 
-def next_counter(recs: list[dict]) -> str:
-    nums = [int(r["id"]) for r in recs if str(r.get("id", "")).isdigit()]
+def next_counter(recs: list[dict], root: Path | None = None) -> str:
+    """The next counter free in this tree — and, given `root`, on origin/main as well.
+
+    Minting is a write, which is why this asks and `check` only warns: by the time
+    anything looks at the number, the record has been renamed, its H1 rewritten and
+    every inbound link repathed, so a counter that is free only here costs far more to
+    undo than to avoid. An absent ref falls back to this tree alone, exactly as before.
+
+    Stepping over a counter origin/main holds leaves what reads as a hole until the
+    rebase; `validate_records` is told to read those as held rather than missing.
+    """
+    nums = {int(r["id"]) for r in recs if str(r.get("id", "")).isdigit()}
+    if root is not None:
+        nums |= {int(c) for c in upstream_ids(root)[0] if c.isdigit()}
     return f"{(max(nums) + 1) if nums else 1:04d}"
 
 
@@ -484,7 +496,7 @@ def check_links(root: Path, recs: list[dict], drafts: list[dict], refs: dict) ->
 
 
 # ── validation ──────────────────────────────────────────────────────────────
-def validate_records(recs: list[dict], refs: dict) -> list[str]:
+def validate_records(recs: list[dict], refs: dict, held_upstream: dict | None = None) -> list[str]:
     errs, ids = [], {}
     for r in recs:
         rid = r.get("id")
@@ -509,7 +521,13 @@ def validate_records(recs: list[dict], refs: dict) -> list[str]:
             errs.append(f"{r['_file']}: in archived/ but status {r.get('status')} is not retired")
     nums = sorted(int(r["id"]) for r in recs if str(r.get("id", "")).isdigit())
     if nums:
-        missing = sorted(set(range(1, nums[-1] + 1)) - set(nums))
+        # A counter origin/main already holds is not a hole. The record exists — it is
+        # simply not on this branch yet — and the rebase closes the sequence. That is
+        # the only thing which explains a gap: a number neither tree has is still a
+        # missing record and still fails. With no ref on disk the set is empty and this
+        # is the rule it has always been, which is also what a fresh clone sees.
+        held = {int(c) for c in (held_upstream or {}) if str(c).isdigit()}
+        missing = sorted(set(range(1, nums[-1] + 1)) - set(nums) - held)
         if missing:
             errs.append("gap in counters — missing " + ", ".join(f"{n:04d}" for n in missing))
     for r in recs:
@@ -633,36 +651,48 @@ def next_free_counter(ids: set) -> str | None:
     return f"{max(nums) + 1:04d}" if nums else None
 
 
-def warn_upstream_collisions(root: Path) -> list[str]:
-    """Counters and draft IDs origin/main already gives to a different filename.
+def ids_by_family(paths: list[str]) -> tuple[dict, dict]:
+    """(counter -> filename, mnemonic -> filename), over paths relative to decisions/.
 
-    Filenames only — no record is parsed, on either side — so a record whose
-    front-matter is still being written reads like any other. A record that moved
-    accepted/ -> archived/ keeps its filename and is correctly silent.
+    Filenames only — no record is parsed, on either side — so one whose front-matter is
+    still being written reads like any other, and the same reading serves both trees.
     """
-    names = upstream_files(decisions_dir(root))
-    if names is None:
-        return []
+    counters: dict = {}
+    mnemonics: dict = {}
+    for rel in sorted(paths):
+        head, _, base = rel.rpartition("/")
+        top = head.split("/")[0]
+        if top == "drafts" and not base.startswith("_"):
+            if (m := FILE_ID_RE.match(base)) and DRAFT_ID_RE.match(m.group(1)):
+                mnemonics.setdefault(m.group(1), base)
+        elif top in ("accepted", "archived") and RECORD_RE.match(base):
+            counters.setdefault(base[:4], base)
+    return counters, mnemonics
 
-    def split(paths: list[str]) -> tuple[dict, dict]:
-        counters: dict = {}
-        mnemonics: dict = {}
-        for rel in sorted(paths):
-            head, _, base = rel.rpartition("/")
-            if head.split("/")[0] == "drafts" and not base.startswith("_"):
-                if m := FILE_ID_RE.match(base):
-                    if DRAFT_ID_RE.match(m.group(1)):
-                        mnemonics.setdefault(m.group(1), base)
-            elif head.split("/")[0] in ("accepted", "archived") and RECORD_RE.match(base):
-                counters.setdefault(base[:4], base)
-        return counters, mnemonics
 
+def local_ids(root: Path) -> tuple[dict, dict]:
     base = decisions_dir(root)
-    ours = split([p.relative_to(base).as_posix() for p in sorted(base.rglob("*.md"))])
-    theirs = split(names)
+    if not base.is_dir():
+        return {}, {}
+    return ids_by_family([p.relative_to(base).as_posix() for p in sorted(base.rglob("*.md"))])
+
+
+def upstream_ids(root: Path) -> tuple[dict, dict]:
+    """What origin/main gives each counter and draft ID. Empty when that ref is not on
+    disk, so every caller then behaves exactly as it did before any of this existed."""
+    names = upstream_files(decisions_dir(root))
+    return ({}, {}) if names is None else ids_by_family(names)
+
+
+def warn_upstream_collisions(local: tuple[dict, dict], upstream: tuple[dict, dict]) -> list[str]:
+    """Counters and draft IDs origin/main already gives to a *different* filename. A
+    record that moved accepted/ -> archived/ keeps its filename and is correctly silent."""
     return collision_warnings(
-        "decisions", ours[0], theirs[0], free=next_free_counter(set(ours[0]) | set(theirs[0]))
-    ) + collision_warnings("drafts", ours[1], theirs[1], fix="re-mint")
+        "decisions",
+        local[0],
+        upstream[0],
+        free=next_free_counter(set(local[0]) | set(upstream[0])),
+    ) + collision_warnings("drafts", local[1], upstream[1], fix="re-mint")
 
 
 def body_ref_ids(text: str) -> set:
@@ -1119,7 +1149,17 @@ def promote(
     if deref_t and not deref:
         return None, _deref_message(deref_t, order)
 
-    base = int(next_counter(recs))
+    here = int(next_counter(recs))
+    base = int(next_counter(recs, root))
+    if base > here:
+        # Otherwise the jump is a mystery: the tree ends at 0048 and the record comes
+        # back 0050. Naming the reason also names the fix.
+        print(
+            f"origin/main holds {here:04d}"
+            + (f"..{base - 1:04d}" if base - 1 > here else "")
+            + f", so this starts at {base:04d}. Rebase to close the sequence.",
+            file=sys.stderr,
+        )
     mapping = {did: f"{base + i:04d}" for i, did in enumerate(order)}
     if deref:
         _do_deref(by_id, order, mapping)
@@ -1420,9 +1460,10 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     refs = ref_map(recs, drafts)
     for w in warn_unknown_types(root, drafts):  # non-blocking: typo / new-type heads-up
         print(w, file=sys.stderr)
-    for w in warn_upstream_collisions(root):  # non-blocking: an ID origin/main already took
+    upstream = upstream_ids(root)  # ({}, {}) when origin/main is not on disk
+    for w in warn_upstream_collisions(local_ids(root), upstream):  # non-blocking
         print(w, file=sys.stderr)
-    struct_errs = validate_records(recs, refs)
+    struct_errs = validate_records(recs, refs, upstream[0])
     out = render_index(recs, root)
 
     if args.cmd == "check":
