@@ -928,3 +928,88 @@ def test_the_warning_does_not_change_the_exit_code(root, capsys, publish_upstrea
     assert code == 1
     assert "WARN decisions: 0002 is taken on origin/main by 0002-beta.md" in out.err
     assert "broken link" in out.err or "stale" in out.err
+
+
+# ── minting against origin/main ─────────────────────────────────────────────
+# `check` only warns about a counter taken upstream, because origin/main moves under a
+# branch. Minting is the other side of that: it is a write, and by the time anything
+# reads the number the record has been renamed, its H1 rewritten and every inbound link
+# repathed — so promote asks the ref rather than reporting on it afterwards.
+def behind_main(root, publish_upstream, *, last="0004"):
+    """A branch that forked before `last` landed: origin/main holds it, this tree does not."""
+    held = [f"{n:04d}" for n in range(4, int(last) + 1)]
+    for counter in held:
+        place(root, counter, "architecture", f"held-{counter}")
+    assert decisions.main(["build", "--relink"], root=root) == 0
+    publish_upstream(root.parent)
+    for counter in held:
+        (root / "decisions" / "accepted" / "architecture" / f"{counter}-held-{counter}.md").unlink()
+    assert decisions.main(["build", "--relink"], root=root) == 0
+    return root
+
+
+def test_promote_mints_past_a_counter_origin_main_holds(root, publish_upstream):
+    behind_main(root, publish_upstream)
+    place_draft(root, "QWER", "security", "new-idea")
+    assert decisions.main(["promote", "QWER"], root=root) == 0
+    assert (root / "decisions/accepted/security/0005-new-idea.md").exists()
+    assert not (root / "decisions/accepted/security/0004-new-idea.md").exists()
+
+
+def test_promote_says_which_counters_upstream_holds(root, capsys, publish_upstream):
+    behind_main(root, publish_upstream)
+    place_draft(root, "QWER", "security", "new-idea")
+    decisions.main(["promote", "QWER"], root=root)
+    assert (
+        "origin/main holds 0004, so this starts at 0005. Rebase to close the sequence."
+        in capsys.readouterr().err
+    )
+
+
+def test_the_note_names_a_range_when_upstream_is_further_ahead(root, capsys, publish_upstream):
+    behind_main(root, publish_upstream, last="0006")
+    place_draft(root, "QWER", "security", "new-idea")
+    decisions.main(["promote", "QWER"], root=root)
+    assert "origin/main holds 0004..0006, so this starts at 0007" in capsys.readouterr().err
+
+
+def test_co_promoted_drafts_all_start_past_upstream(root, publish_upstream):
+    behind_main(root, publish_upstream)
+    place_draft(root, "QWER", "security", "first")
+    place_draft(root, "ZXCV", "security", "second")
+    assert decisions.main(["promote", "QWER", "ZXCV"], root=root) == 0
+    assert (root / "decisions/accepted/security/0005-first.md").exists()
+    assert (root / "decisions/accepted/security/0006-second.md").exists()
+
+
+def test_the_counter_stepped_over_is_not_reported_as_a_gap(root, capsys, publish_upstream):
+    """The record exists — it is just not on this branch yet, and the rebase closes it."""
+    behind_main(root, publish_upstream)
+    place_draft(root, "QWER", "security", "new-idea")
+    assert decisions.main(["promote", "QWER"], root=root) == 0
+    code, out = check(root, capsys)
+    assert code == 0
+    assert "gap in counters" not in out.err
+
+
+def test_a_counter_neither_tree_has_is_still_a_gap(root, publish_upstream):
+    branch_off(root, publish_upstream)
+    place(root, "0005", "architecture", "skipper")  # 0004 is in neither tree
+    decisions.main(["build", "--relink"], root=root)
+    assert decisions.main(["check"], root=root) == 1
+
+
+def test_without_the_ref_promote_mints_the_local_next(built, capsys):
+    """A fresh clone or an offline machine mints exactly as it did before any of this."""
+    place_draft(built, "QWER", "security", "new-idea")
+    assert decisions.main(["promote", "QWER"], root=built) == 0
+    assert (built / "decisions/accepted/security/0004-new-idea.md").exists()
+    assert "origin/main holds" not in capsys.readouterr().err
+
+
+def test_no_note_when_origin_main_is_not_ahead(root, capsys, publish_upstream):
+    branch_off(root, publish_upstream)
+    place_draft(root, "QWER", "security", "new-idea")
+    assert decisions.main(["promote", "QWER"], root=root) == 0
+    assert (root / "decisions/accepted/security/0004-new-idea.md").exists()
+    assert "origin/main holds" not in capsys.readouterr().err

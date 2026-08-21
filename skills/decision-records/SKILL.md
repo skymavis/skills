@@ -61,6 +61,13 @@ also reads the `origin/main` already on disk and prints a `WARN` line when an ID
 different file, along with the next free counter. It never fetches, never fails the run, and says
 nothing at all when that ref is not present — a fresh clone or an offline machine is not a finding.
 
+**`promote` mints past what `origin/main` holds.** Minting is the other side of that: it is a write
+— the record is renamed, its H1 rewritten and every inbound link repathed — so `promote` reads the
+ref rather than reporting on it afterwards, and prints which counters it stepped over. The hole that
+leaves is not a gap: `check` reads a counter `origin/main` holds as held rather than missing, and
+the rebase closes the sequence. A number neither tree has still fails, and with no ref on disk both
+behave exactly as they did before.
+
 ## Promoting drafts
 
 **Promotion requires explicit human sign-off.** Promoting is a finalizing, semi-irreversible act
