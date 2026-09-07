@@ -808,11 +808,12 @@ def test_install_scaffolds_fresh_repo(tmp_path):
         "decisions/archived/.gitkeep",
         "decisions/README.md",
         "decisions/AGENTS.md",
-        "decisions/_template.md",
         "decisions/drafts/_template.md",
         "decisions/INDEX.md",
     ):
         assert (docs / p).exists(), p
+    # ONE template: records are born drafts, so no accepted-record template is scaffolded
+    assert not (docs / "decisions/_template.md").exists()
     assert decisions.main(["check"], root=docs) == 0  # scaffolded repo is valid immediately
 
     # gitignores the machine-specific symlink (creating .gitignore in an empty repo)

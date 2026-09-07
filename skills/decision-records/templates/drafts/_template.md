@@ -1,8 +1,11 @@
 ---
-# Draft — a decision candidate (WIP). Same shape as a decision record, so promotion is
-# mechanical; it just carries a 4-letter ID and status: draft, and lives in drafts/.
+# Draft — a decision candidate (WIP), and the ONLY template: a record is born a draft,
+# and `promote` is the only door into accepted/ (it mints the counter and flips status).
 # Filename:  AAAA-kebab-title.md  (AAAA = the 4 UPPERCASE letters of `id` below).
 # Promotion, linking, and validation are the decision-records skill's job.
+# Write the ruling, not the debate: cite the argument (References), don't restate it.
+# Delete a section with nothing to say — padding, not length, is what to trim — and a
+# record that keeps growing is usually several rulings sharing a file.
 id: ABCD                          # REQUIRED: 4 UPPERCASE letters, a mnemonic of the topic
 title: Short imperative title
 type: architecture                # an open lowercase slug (architecture, product, security, …)
@@ -20,19 +23,23 @@ superseded_by:                    # ID that replaces this, or blank
 
 ## Context
 
-What forces are at play? What problem or tension prompts this decision? State the constraints as
-they actually are. Don't sanitize.
+The tension that forces a decision, in a few sentences, as it actually is. Don't sanitize, and don't
+narrate history the References already carry.
 
 ## Decision
 
-The proposed decision in one or two sentences, active voice ("We will …"). Binding once promoted and
+The decision in one or two sentences, active voice ("We will …"). Binding once promoted and
 `accepted` — course changes only by supersession.
 
 ## Rationale
 
-Why this option over the others, given the context above.
+Only what the Decision doesn't already imply — why this over the alternatives. Delete the section
+when it would just repeat the Decision.
 
 ## Alternatives considered
+
+Only options genuinely argued — never pad the table. Delete the section when nothing else was on the
+table.
 
 | Option | Why not |
 | :----- | :------ |
@@ -40,18 +47,12 @@ Why this option over the others, given the context above.
 
 ## Consequences
 
-**Positive**
-
-- …
-
-**Negative / accepted costs**
-
-- …
-
-**Risks & open questions**
+What this makes better, worse, or riskier — one list, only lines someone will act on. Open questions
+and pending follow-up rulings live here too.
 
 - …
 
 ## References
 
-- Threads, specs, external sources, and related records by ID (e.g. `0001`, `TIER`).
+Records by ID (e.g. `0001`, `TIER`), threads, memos, sources — where the full argument lives. Delete
+the section when there are none.
