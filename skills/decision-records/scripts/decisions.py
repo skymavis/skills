@@ -11,11 +11,10 @@ Repository layout — everything the convention owns lives under docs/decisions/
         INDEX.md                    # GENERATED registry over accepted/ + archived/
         README.md                   # human guide to the convention (scaffolded by install)
         AGENTS.md                   # agent rules: decisions are binding (scaffolded by install)
-        _template.md                # decision-record template (numbered)
         accepted/                   # ACCEPTED numbered decisions — flat; `type` is front-matter
         archived/                   # RETIRED numbered decisions (superseded | deprecated) — flat
         drafts/                     # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
-          _template.md
+          _template.md              # the ONLY template — records are born drafts
       threat-model.md               # other repo docs stay siblings; still cross-ref decisions
 
 Lifecycle (there is NO "proposed" status — proposing is the *act* of opening a PR):
@@ -1417,7 +1416,6 @@ def install(repo: Path) -> None:
     for src, dst in (
         (skill / "templates" / "README.md", decisions_dir(docs) / "README.md"),
         (skill / "templates" / "AGENTS.md", decisions_dir(docs) / "AGENTS.md"),
-        (skill / "templates" / "_template.md", decisions_dir(docs) / "_template.md"),
         (skill / "templates" / "drafts" / "_template.md", drafts_dir(docs) / "_template.md"),
     ):
         if src.exists() and not dst.exists():

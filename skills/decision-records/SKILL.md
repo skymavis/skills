@@ -72,6 +72,29 @@ leaves is not a gap: `check` reads a counter `origin/main` holds as held rather 
 the rebase closes the sequence. A number neither tree has still fails, and with no ref on disk both
 behave exactly as they did before.
 
+## Authoring
+
+Copy `drafts/_template.md` — the only template. A record is born a draft, and `promote` is the only
+door into `accepted/`: it mints the counter, flips the status, and rewrites the H1, so there is
+nothing an accepted-record template would add except a way around sign-off.
+
+Write the ruling, not the debate:
+
+- **Cite, don't restate.** The full argument lives in the linked thread, memo, or log; the record
+  carries the decision, the live rationale, and pointers under References.
+- **Delete a section with nothing to say.** A Rationale that repeats the Decision, an unargued
+  alternatives table, a padded consequences list — deletion beats padding, and the template marks
+  which sections may go.
+- **Every sentence earns its place.** A flat sentence that states the fact beats a paragraph that
+  performs it; one flourish is a voice, a flourish per paragraph is a tell.
+- **One decision per record.** A record that keeps growing is usually several rulings sharing a file
+  — split them.
+
+There is deliberately no length rule. A pure ruling often fits in a few dozen lines; a record that
+also carries specification — in some repos the accepted record IS the spec of what shipped —
+legitimately runs hundreds. Length is a symptom to weigh, not a number to police; what the bullets
+above remove is padding, which shows up at every length.
+
 ## Promoting drafts
 
 **Promotion requires explicit human sign-off.** Promoting is a finalizing, semi-irreversible act
@@ -103,8 +126,8 @@ missing and regenerates `INDEX.md`. What it does:
 - **Symlinks** `<repo>/scripts/decisions.py` to this skill's copy, and **gitignores** that path
   (creating `.gitignore` if absent) — the symlink is machine-specific, so each clone recreates it
   with `install` rather than committing it.
-- **Scaffolds** `docs/decisions/`: `accepted/`, `archived/`, `drafts/`, the two record templates, a
-  human `README.md`, and an agent-facing `AGENTS.md`.
+- **Scaffolds** `docs/decisions/`: `accepted/`, `archived/`, `drafts/` with its template (the only
+  one), a human `README.md`, and an agent-facing `AGENTS.md`.
 - **Generates** `INDEX.md` (a build artifact, not a starter).
 - **Wires the root entry points** — when the repo has no root `README.md` or `AGENTS.md` (a fresh or
   empty repo), creates each as a placeholder linking the scaffold so people and agents discover it.

@@ -43,7 +43,11 @@ why a decision changed.
 
 ## Authoring & cross-referencing
 
-- Copy `_template.md` for a decision, or `drafts/_template.md` for a draft, and fill it in.
+- Copy `drafts/_template.md` — the only template. A record is born a draft; promotion mints the
+  counter and is the only way into `accepted/`.
+- **Write the ruling, not the debate.** Cite the argument, don't restate it; delete a section with
+  nothing to say; a record that keeps growing is usually several decisions sharing a file. Padding,
+  not length, is what to trim.
 - Mint a draft's 4-letter ID yourself (a mnemonic of the topic). Accepted records get the next
   global counter automatically when a draft is promoted.
 - Refer to another record by writing its ID inline — the tooling renders IDs as links and keeps them
