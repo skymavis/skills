@@ -359,6 +359,56 @@ def test_migrate_layout_refuses_a_duplicate_filename_before_moving_anything(tmp_
     assert (docs / "decisions" / "accepted" / "security" / "0002-beta.md").exists()
 
 
+# ── stale citations of superseded records ───────────────────────────────────
+# Supersession retires a record, but nothing used to re-read the docs citing it. These
+# warn and never gate: a mention can be deliberately historical.
+def test_citing_a_superseded_record_warns_with_the_successor(built, capsys):
+    place_draft(built, "CCCC", "architecture", "newer", supersedes='"0001"')
+    assert decisions.main(["promote", "CCCC", "--allow-replace"], root=built) == 0
+    (built / "roadmap.md").write_text("# Roadmap\n\nRests on `0001`.\n", encoding="utf-8")
+    decisions.main(["build", "--relink"], root=built)
+    capsys.readouterr()
+    assert decisions.main(["check"], root=built) == 0  # a warning, never a gate
+    assert "roadmap.md: cites 0001, which 0004 superseded" in capsys.readouterr().err
+
+
+def test_a_relates_to_pointing_at_a_superseded_record_warns(built, capsys):
+    place_draft(built, "CCCC", "architecture", "newer", supersedes='"0001"')
+    assert decisions.main(["promote", "CCCC", "--allow-replace"], root=built) == 0
+    place_draft(built, "EEEE", "security", "hanger", relates_to='["0001"]')
+    decisions.main(["build", "--relink"], root=built)
+    capsys.readouterr()
+    assert decisions.main(["check"], root=built) == 0
+    assert "EEEE-hanger.md: cites 0001, which 0004 superseded" in capsys.readouterr().err
+
+
+def test_the_superseding_record_may_name_what_it_replaced(built, capsys):
+    place_draft(
+        built, "CCCC", "architecture", "newer", supersedes='"0001"', body="Replaces `0001`."
+    )
+    assert decisions.main(["promote", "CCCC", "--allow-replace"], root=built) == 0
+    capsys.readouterr()
+    assert decisions.main(["check"], root=built) == 0
+    assert "0004-newer.md:" not in capsys.readouterr().err  # its own cite is exempt
+
+
+def test_archived_records_cite_what_they_like(built, capsys):
+    # Retire 0001 and 0002, then have frozen history (archived 0001) mention 0002.
+    place_draft(built, "CCCC", "architecture", "newer", supersedes='"0001"')
+    place_draft(built, "DDDD", "architecture", "newest", supersedes='"0002"')
+    assert decisions.main(["promote", "CCCC", "DDDD", "--allow-replace"], root=built) == 0
+    arch = built / "decisions" / "archived" / "0001-alpha.md"
+    arch.write_text(arch.read_text() + "\nOnce paired with `0002`.\n", encoding="utf-8")
+    decisions.main(["build", "--relink"], root=built)
+    capsys.readouterr()
+    assert decisions.main(["check"], root=built) == 0
+    err = capsys.readouterr().err
+    assert "0001-alpha.md:" not in err  # frozen history is not swept
+    # …while the living 0003, which cites both retired records, is exactly who this is for
+    assert "0003-gamma.md: cites 0001, which 0004 superseded" in err
+    assert "0003-gamma.md: cites 0002, which 0005 superseded" in err
+
+
 # ── decision → draft breach ─────────────────────────────────────────────────
 def test_decision_referencing_draft_is_breach(built):
     place(built, "0004", "architecture", "leaky", body="depends on `WXYZ`.")
