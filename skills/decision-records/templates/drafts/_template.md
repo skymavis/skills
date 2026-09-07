@@ -5,7 +5,7 @@
 # Promotion, linking, and validation are the decision-records skill's job.
 id: ABCD                          # REQUIRED: 4 UPPERCASE letters, a mnemonic of the topic
 title: Short imperative title
-type: architecture                # a lowercase slug = the directory it lands in on promotion
+type: architecture                # an open lowercase slug (architecture, product, security, …)
 status: draft                     # draft | under-review
 date: YYYY-MM-DD
 deciders: [trung]

@@ -34,11 +34,11 @@ def record_text(
 
 
 def place(root, counter, typ, title, *, lifecycle="decisions", subdir=None, **kw):
-    d = (
-        root / "decisions" / "accepted" / (subdir or typ)
-        if lifecycle == "decisions"
-        else root / "decisions" / lifecycle
-    )
+    """Write a record. `subdir` nests it accepted/<subdir>/ — the OLD layout, kept so the
+    migrate-layout tests can build a pre-migration tree."""
+    d = root / "decisions" / ("accepted" if lifecycle == "decisions" else lifecycle)
+    if subdir and lifecycle == "decisions":
+        d = d / subdir
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"{counter}-{title}.md"
     p.write_text(record_text(counter, typ, title, **kw), encoding="utf-8")
@@ -76,7 +76,7 @@ def write_threat_model(root, body):
 
 @pytest.fixture
 def root(tmp_path):
-    """docs/ with contiguous accepted 0001..0003; 0003 (security) cites 0001 & 0002."""
+    """docs/ with contiguous accepted 0001..0003 (flat); 0003 cites 0001 & 0002."""
     docs = tmp_path / "docs"
     place(docs, "0001", "architecture", "alpha")
     place(docs, "0002", "architecture", "beta")
@@ -117,7 +117,7 @@ def test_block_scalar_with_no_continuation_is_empty():
 
 
 def test_folded_summary_renders_in_index(root):
-    p = root / "decisions/accepted/architecture/0001-alpha.md"
+    p = root / "decisions/accepted/0001-alpha.md"
     p.write_text(
         p.read_text().replace(
             "summary: one-line summary",
@@ -131,7 +131,7 @@ def test_folded_summary_renders_in_index(root):
 
 
 def test_check_flags_bare_scalar_indicator_summary(root):
-    p = root / "decisions/accepted/architecture/0001-alpha.md"
+    p = root / "decisions/accepted/0001-alpha.md"
     p.write_text(p.read_text().replace("summary: one-line summary", 'summary: ">-"'))
     assert decisions.main(["check"], root=root) == 1
 
@@ -141,7 +141,7 @@ def test_build_writes_index_sorted(root):
     assert decisions.main(["build"], root=root) == 0
     index = (root / "decisions" / "INDEX.md").read_text()
     assert index.index("0001") < index.index("0002") < index.index("0003")
-    assert "(accepted/architecture/0001-alpha.md)" in index
+    assert "(accepted/0001-alpha.md)" in index
     assert "| architecture |" in index and "| security |" in index
 
 
@@ -158,25 +158,25 @@ def test_no_proposed_status_allowed(root):
 
 
 # ── relink ──────────────────────────────────────────────────────────────────
-def test_relink_cross_directory(built):
-    body = (built / "decisions/accepted/security/0003-gamma.md").read_text()
-    assert "[`0001`](../architecture/0001-alpha.md)" in body
+def test_relink_within_accepted(built):
+    body = (built / "decisions/accepted/0003-gamma.md").read_text()
+    assert "[`0001`](0001-alpha.md)" in body
 
 
 def test_relink_idempotent(built):
-    p = built / "decisions/accepted/security/0003-gamma.md"
+    p = built / "decisions/accepted/0003-gamma.md"
     before = p.read_text()
     assert decisions.main(["build", "--relink"], root=built) == 0
     assert p.read_text() == before
 
 
 def test_move_self_heals(built):
-    src = built / "decisions/accepted/architecture/0001-alpha.md"
+    src = built / "decisions/accepted/0001-alpha.md"
     src.rename(src.with_name("0001-alpha-renamed.md"))
     assert decisions.main(["check"], root=built) == 1
     assert decisions.main(["build", "--relink"], root=built) == 0
     assert decisions.main(["check"], root=built) == 0
-    gamma = (built / "decisions/accepted/security/0003-gamma.md").read_text()
+    gamma = (built / "decisions/accepted/0003-gamma.md").read_text()
     assert "0001-alpha-renamed.md" in gamma
 
 
@@ -208,7 +208,7 @@ def test_draft_duplicate_id(built):
 def test_threat_model_gets_linked(built):
     write_threat_model(built, "Vector X addressed by `0001`.")
     assert decisions.main(["build", "--relink"], root=built) == 0
-    link = "[`0001`](decisions/accepted/architecture/0001-alpha.md)"
+    link = "[`0001`](decisions/accepted/0001-alpha.md)"
     assert link in (built / "threat-model.md").read_text()
     assert decisions.main(["check"], root=built) == 0
 
@@ -223,7 +223,7 @@ def test_any_doc_is_linked_and_checked(built):
         "# Roadmap\n\nMilestone builds on `0001`.\n", encoding="utf-8"
     )
     assert decisions.main(["build", "--relink"], root=built) == 0
-    link = "[`0001`](decisions/accepted/architecture/0001-alpha.md)"
+    link = "[`0001`](decisions/accepted/0001-alpha.md)"
     assert link in (built / "roadmap.md").read_text()
     (built / "roadmap.md").write_text("# Roadmap\n\nBuilds on `0099`.\n", encoding="utf-8")
     assert decisions.main(["check"], root=built) == 1
@@ -237,16 +237,16 @@ def test_templates_and_index_excluded_from_linkcheck(built):
 
 
 # ── placement, duplicates, skips ────────────────────────────────────────────
-def test_dir_must_match_type(root):
-    place(root, "0004", "architecture", "misplaced", subdir="security")
+def test_nested_record_fails_check_and_points_at_migrate_layout(root, capsys):
+    place(root, "0004", "architecture", "nested", subdir="architecture")  # the OLD layout
     assert decisions.main(["check"], root=root) == 1
+    assert "migrate-layout" in capsys.readouterr().err
 
 
 def test_custom_type_is_open(built):
     place_draft(built, "LEGL", "legal", "retention-policy")  # a type outside the usual set
     assert decisions.main(["promote", "LEGL"], root=built) == 0
-    # the type's dir is auto-created on promotion
-    assert (built / "decisions/accepted/legal/0004-retention-policy.md").exists()
+    assert (built / "decisions/accepted/0004-retention-policy.md").exists()
     assert decisions.main(["check"], root=built) == 0
 
 
@@ -256,7 +256,7 @@ def test_invalid_type_slug_rejected(built):
 
 
 def test_new_type_warns_but_passes(built, capsys):
-    place_draft(built, "LEGL", "legal", "thing")  # no decisions/legal/ yet
+    place_draft(built, "LEGL", "legal", "thing")  # no accepted record carries `legal` yet
     assert decisions.main(["check"], root=built) == 0  # non-blocking
     assert "new type" in capsys.readouterr().err  # but warned
 
@@ -282,6 +282,83 @@ def test_gap_in_counters(root):
     assert decisions.main(["check"], root=root) == 1
 
 
+# ── migrate-layout: the one-shot flattening ─────────────────────────────────
+def nested_repo(tmp_path):
+    """A pre-migration docs/ on the old accepted/<type>/ layout, with the reference
+    classes a migration must carry: an ID ref between records, one from a sibling doc,
+    and a spelled-out path in prose."""
+    docs = tmp_path / "docs"
+    place(docs, "0001", "architecture", "alpha", subdir="architecture")
+    place(docs, "0002", "architecture", "beta", subdir="architecture")
+    place(
+        docs,
+        "0003",
+        "security",
+        "gamma",
+        subdir="security",
+        body=(
+            "builds on `0001`.\nA [sandbox](../../../glossary.md#sandbox) term and "
+            "the [beta rules](../architecture/0002-beta.md)."
+        ),
+    )
+    (docs / "glossary.md").write_text("# Glossary\n\n## sandbox\n\nbody\n", encoding="utf-8")
+    place_draft(
+        docs,
+        "WXYZ",
+        "security",
+        "candidate",
+        body="see [beta](../accepted/architecture/0002-beta.md).",
+    )
+    write_threat_model(docs, "Vector X addressed by `0001`.")
+    (docs / "research").mkdir(parents=True, exist_ok=True)
+    (docs / "research" / "memo.md").write_text(
+        "# Memo\n\nSee `docs/decisions/accepted/security/0003-gamma.md`.\n", encoding="utf-8"
+    )
+    return docs
+
+
+def test_nested_layout_check_names_the_fix(tmp_path, capsys):
+    docs = nested_repo(tmp_path)
+    assert decisions.main(["check"], root=docs) == 1
+    assert "migrate-layout" in capsys.readouterr().err
+
+
+def test_migrate_layout_flattens_relinks_and_passes_check(tmp_path):
+    docs = nested_repo(tmp_path)
+    assert decisions.main(["migrate-layout"], root=docs) == 0
+    for name in ("0001-alpha.md", "0002-beta.md", "0003-gamma.md"):
+        assert (docs / "decisions" / "accepted" / name).exists()
+    assert not (docs / "decisions" / "accepted" / "architecture").exists()  # emptied dirs go
+    assert not (docs / "decisions" / "accepted" / "security").exists()
+    gamma = (docs / "decisions/accepted/0003-gamma.md").read_text()
+    assert "[`0001`](0001-alpha.md)" in gamma
+    assert "(../../glossary.md#sandbox)" in gamma  # hand-authored link re-pathed one level up
+    assert "(0002-beta.md)" in gamma  # …and one whose TARGET moved is retargeted
+    draft = (docs / "decisions/drafts/WXYZ-candidate.md").read_text()
+    assert "(../accepted/0002-beta.md)" in draft  # a non-ID-labelled link from an unmoved doc
+    assert "(decisions/accepted/0001-alpha.md)" in (docs / "threat-model.md").read_text()
+    assert "`docs/decisions/accepted/0003-gamma.md`" in (docs / "research" / "memo.md").read_text()
+    assert decisions.main(["check"], root=docs) == 0
+
+
+def test_migrate_layout_is_a_noop_on_a_flat_tree(built, capsys):
+    assert decisions.main(["migrate-layout"], root=built) == 0
+    assert "already flat" in capsys.readouterr().out
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_migrate_layout_refuses_a_duplicate_filename_before_moving_anything(tmp_path, capsys):
+    docs = tmp_path / "docs"
+    place(docs, "0001", "architecture", "alpha")  # already flat
+    place(docs, "0001", "security", "alpha", subdir="security")  # same filename, nested
+    place(docs, "0002", "security", "beta", subdir="security")  # would be movable…
+    assert decisions.main(["migrate-layout"], root=docs) == 1
+    assert "refusing" in capsys.readouterr().err
+    # …but nothing moved: the refusal comes before the first rename
+    assert (docs / "decisions" / "accepted" / "security" / "0001-alpha.md").exists()
+    assert (docs / "decisions" / "accepted" / "security" / "0002-beta.md").exists()
+
+
 # ── decision → draft breach ─────────────────────────────────────────────────
 def test_decision_referencing_draft_is_breach(built):
     place(built, "0004", "architecture", "leaky", body="depends on `WXYZ`.")
@@ -301,7 +378,7 @@ def test_decision_linked_draft_ref_is_breach(built):
     place_draft(built, "WXYZ", "security", "candidate")
     place(built, "0004", "architecture", "leaky3", body="builds on `WXYZ`.")
     assert decisions.main(["build", "--relink"], root=built) == 0  # refresh INDEX + linkify the ref
-    body = (built / "decisions/accepted/architecture/0004-leaky3.md").read_text()
+    body = (built / "decisions/accepted/0004-leaky3.md").read_text()
     assert "[`WXYZ`](" in body  # ref is now a markdown link
     assert decisions.main(["check"], root=built) == 1  # ...and is still flagged
 
@@ -340,7 +417,7 @@ def test_rename_draft_rejects_invalid_id(built):
 def test_promote_assigns_next_counter_accepted(built):
     place_draft(built, "QWER", "security", "new-idea")
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    dest = built / "decisions/accepted/security/0004-new-idea.md"
+    dest = built / "decisions/accepted/0004-new-idea.md"
     assert dest.exists()
     assert 'id: "0004"' in dest.read_text() and "status: accepted" in dest.read_text()
     assert not (built / "decisions/drafts/QWER-new-idea.md").exists()
@@ -390,8 +467,8 @@ def test_promote_assigns_counters_in_argument_order(built):
     place_draft(built, "ZZZZ", "security", "foundation", body="named by `AAAA`.")
     place_draft(built, "AAAA", "architecture", "built-on-it", body="builds on `ZZZZ`.")
     assert decisions.main(["promote", "ZZZZ", "AAAA"], root=built) == 0
-    assert (built / "decisions/accepted/security/0004-foundation.md").exists()
-    assert (built / "decisions/accepted/architecture/0005-built-on-it.md").exists()
+    assert (built / "decisions/accepted/0004-foundation.md").exists()
+    assert (built / "decisions/accepted/0005-built-on-it.md").exists()
     assert decisions.main(["check"], root=built) == 0
 
 
@@ -400,8 +477,8 @@ def test_promote_reverses_with_the_arguments(built):
     place_draft(built, "ZZZZ", "security", "foundation", body="named by `AAAA`.")
     place_draft(built, "AAAA", "architecture", "built-on-it", body="builds on `ZZZZ`.")
     assert decisions.main(["promote", "AAAA", "ZZZZ"], root=built) == 0
-    assert (built / "decisions/accepted/architecture/0004-built-on-it.md").exists()
-    assert (built / "decisions/accepted/security/0005-foundation.md").exists()
+    assert (built / "decisions/accepted/0004-built-on-it.md").exists()
+    assert (built / "decisions/accepted/0005-foundation.md").exists()
 
 
 def test_blocking_message_suggests_a_command_that_keeps_the_requested_order(built):
@@ -413,8 +490,8 @@ def test_blocking_message_suggests_a_command_that_keeps_the_requested_order(buil
     assert dests is None and "promote ZZZZ AAAA" in err
     argv = err.split("Run:\n  ")[1].splitlines()[0].split()[2:]  # drop `python scripts/…`
     assert decisions.main(argv, root=built) == 0
-    assert (built / "decisions/accepted/security/0004-foundation.md").exists()
-    assert (built / "decisions/accepted/architecture/0005-dep.md").exists()
+    assert (built / "decisions/accepted/0004-foundation.md").exists()
+    assert (built / "decisions/accepted/0005-dep.md").exists()
     assert decisions.main(["check"], root=built) == 0
 
 
@@ -440,7 +517,7 @@ def test_promote_no_match(built):
 def test_promote_numbers_the_h1(built):
     place_draft(built, "QWER", "security", "new-idea")
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    body = (built / "decisions/accepted/0004-new-idea.md").read_text()
     assert "# 0004 — new-idea" in body and "# QWER" not in body
 
 
@@ -448,7 +525,7 @@ def test_promote_numbers_a_backticked_h1(built):
     p = place_draft(built, "QWER", "security", "new-idea")
     p.write_text(p.read_text().replace("# QWER — ", "# `QWER` — "))
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    dest = built / "decisions/accepted/security/0004-new-idea.md"
+    dest = built / "decisions/accepted/0004-new-idea.md"
     assert "# 0004 — new-idea" in dest.read_text()
 
 
@@ -463,7 +540,7 @@ def test_promote_inserts_a_missing_h1_from_the_title(built, capsys):
     p = place_draft(built, "QWER", "security", "new-idea")
     p.write_text(p.read_text().replace("# QWER — new-idea\n\n", ""))
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    body = (built / "decisions/accepted/0004-new-idea.md").read_text()
     assert body.split("---\n", 2)[2].lstrip().startswith("# 0004 — new-idea")
     assert "inserted the H1" in capsys.readouterr().err  # ...and says so
 
@@ -472,7 +549,7 @@ def test_promote_flags_an_h1_that_does_not_lead_with_the_id(built, capsys):
     p = place_draft(built, "QWER", "security", "new-idea")
     p.write_text(p.read_text().replace("# QWER — new-idea", "# Something else entirely"))
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
+    body = (built / "decisions/accepted/0004-new-idea.md").read_text()
     assert "# 0004 — Something else entirely" in body
     assert "check it" in capsys.readouterr().err
 
@@ -502,6 +579,8 @@ def with_links(root):
 
 def test_promote_repaths_every_relative_link_class(built):
     with_links(built)
+    (built / "decisions" / "drafts").mkdir(parents=True, exist_ok=True)
+    (built / "decisions" / "drafts" / "_template.md").write_text("# template\n", encoding="utf-8")
     place_draft(
         built,
         "QWER",
@@ -510,17 +589,20 @@ def test_promote_repaths_every_relative_link_class(built):
         body=(
             "A [sandbox](../../glossary.md#sandbox), the [memo](../../research/memo.md),\n"
             "[deploy](../../deploy.md), and [`../../../scripts/spike.py`]"
-            "(../../../scripts/spike.py).\n\n## Heading\n\nAn [anchor](#heading) and "
+            "(../../../scripts/spike.py).\nAlso the [draft template](_template.md)."
+            "\n\n## Heading\n\nAn [anchor](#heading) and "
             "an [away](https://example.com/x) link.\n"
         ),
     )
     assert decisions.main(["promote", "QWER"], root=built) == 0  # 1 if a link stayed broken
-    body = (built / "decisions/accepted/security/0004-new-idea.md").read_text()
-    assert "(../../../glossary.md#sandbox)" in body  # accepted/<type>/ sits a level deeper
-    assert "(../../../research/memo.md)" in body
-    assert "(../../../deploy.md)" in body
-    # a link labelled with its own path moves label and target together
-    assert "[`../../../../scripts/spike.py`](../../../../scripts/spike.py)" in body
+    body = (built / "decisions/accepted/0004-new-idea.md").read_text()
+    # drafts/ and accepted/ are siblings, so same-depth paths survive unchanged…
+    assert "(../../glossary.md#sandbox)" in body
+    assert "(../../research/memo.md)" in body
+    assert "(../../deploy.md)" in body
+    assert "[`../../../scripts/spike.py`](../../../scripts/spike.py)" in body
+    # …while a path INTO the old dir is re-expressed to reach back into drafts/
+    assert "(../drafts/_template.md)" in body
     assert "(#heading)" in body and "(https://example.com/x)" in body  # neither is ours to move
     assert decisions.main(["check"], root=built) == 0
 
@@ -529,7 +611,7 @@ def test_promote_exits_nonzero_when_a_link_stays_broken(built, capsys):
     place_draft(built, "QWER", "security", "new-idea", body="a [gone](../../nowhere.md) link.")
     assert decisions.main(["promote", "QWER"], root=built) == 1  # promoted, but says so
     assert "broken link" in capsys.readouterr().err
-    assert (built / "decisions/accepted/security/0004-new-idea.md").exists()
+    assert (built / "decisions/accepted/0004-new-idea.md").exists()
 
 
 def test_promote_repoints_a_spelled_out_path(built):
@@ -540,7 +622,7 @@ def test_promote_repoints_a_spelled_out_path(built):
     )
     assert decisions.main(["promote", "QWER"], root=built) == 0
     memo = (built / "research" / "memo.md").read_text()
-    assert "`docs/decisions/accepted/security/0004-new-idea.md`" in memo
+    assert "`docs/decisions/accepted/0004-new-idea.md`" in memo
 
 
 # ── promote: the mnemonic stops reading anywhere ────────────────────────────
@@ -548,7 +630,7 @@ def test_promote_converts_bare_prose_mnemonics(built):
     place_draft(built, "QWER", "security", "door", body="QWER fixes the door; see `QWER`.")
     place_draft(built, "EFGH", "architecture", "referrer", body="Behind QWER's door.")
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    record = (built / "decisions/accepted/security/0004-door.md").read_text()
+    record = (built / "decisions/accepted/0004-door.md").read_text()
     assert record.count("QWER") == 0 and "0004 fixes the door" in record  # self-refs too
     assert "Behind 0004's door." in (built / "decisions/drafts/EFGH-referrer.md").read_text()
 
@@ -599,7 +681,7 @@ def test_residual_mnemonics_reports_code_but_never_edits_it(built, capsys):
 
 # ── promote: front matter round-trips clean ─────────────────────────────────
 def test_blank_ref_fields_keep_no_trailing_space(built):
-    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p = built / "decisions/accepted/0001-alpha.md"
     p.write_text(p.read_text().replace("supersedes: null", "supersedes:"))
     place_draft(built, "QWER", "security", "new-idea")
     assert decisions.main(["promote", "QWER"], root=built) == 0
@@ -615,7 +697,7 @@ def test_promote_deref_inverts_frontmatter_edge(built):
     dests, err = decisions.promote(built, ["AAAA"])  # front-matter-only ref
     assert dests is None and "--deref" in err
     assert decisions.main(["promote", "--deref", "AAAA"], root=built) == 0
-    assert (built / "decisions/accepted/architecture/0004-alpha.md").exists()
+    assert (built / "decisions/accepted/0004-alpha.md").exists()
     assert '"0004"' in (built / "decisions/drafts/BBBB-beta.md").read_text()  # link moved onto BBBB
     assert decisions.main(["check"], root=built) == 0
 
@@ -628,7 +710,7 @@ def test_promote_deref_inverts_superseded_by_edge(built):
     dests, err = decisions.promote(built, ["AAAA"])  # front-matter-only ref
     assert dests is None and "--deref" in err
     assert decisions.main(["promote", "--deref", "AAAA"], root=built) == 0
-    assert (built / "decisions/accepted/architecture/0004-alpha.md").exists()
+    assert (built / "decisions/accepted/0004-alpha.md").exists()
     bbbb = decisions.parse_front_matter((built / "decisions/drafts/BBBB-beta.md").read_text())
     assert bbbb["supersedes"] == "0004"  # scalar counter, not a list
     assert decisions.main(["check"], root=built) == 0
@@ -676,21 +758,21 @@ def test_check_clean(built):
 
 
 def test_check_read_only(built):
-    p = built / "decisions/accepted/security/0003-gamma.md"
+    p = built / "decisions/accepted/0003-gamma.md"
     before = (p.read_text(), (built / "decisions" / "INDEX.md").read_text())
     assert decisions.main(["check"], root=built) == 0
     assert (p.read_text(), (built / "decisions" / "INDEX.md").read_text()) == before
 
 
 def test_check_detects_stale_index(built):
-    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p = built / "decisions/accepted/0001-alpha.md"
     p.write_text(p.read_text().replace("one-line summary", "changed"))
     assert decisions.main(["check"], root=built) == 1
 
 
 def test_bare_relink_folds_into_build(root):
     assert decisions.main(["--relink"], root=root) == 0
-    assert "[`0001`]" in (root / "decisions/accepted/security/0003-gamma.md").read_text()
+    assert "[`0001`]" in (root / "decisions/accepted/0003-gamma.md").read_text()
 
 
 def test_unknown_subcommand_exits_2(root):
@@ -774,30 +856,30 @@ def test_heading_anchors_github_slugs():
 
 
 def test_link_inside_code_span_is_not_checked(built):
-    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p = built / "decisions/accepted/0001-alpha.md"
     p.write_text(p.read_text() + "\nUse the form `[term](../../glossary.md#term)` when linking.\n")
     assert decisions.main(["check"], root=built) == 0
 
 
 def test_link_inside_fenced_block_is_not_checked(built):
-    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p = built / "decisions/accepted/0001-alpha.md"
     p.write_text(p.read_text() + "\n```md\n[term](../../nowhere.md#x)\n```\n")
     assert decisions.main(["check"], root=built) == 0
 
 
 def test_broken_cross_file_anchor_is_flagged(built, capsys):
     (built / "glossary.md").write_text("# Glossary\n\n## sandbox\n\nbody\n")
-    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p = built / "decisions/accepted/0001-alpha.md"
     body = p.read_text()
-    p.write_text(body + "\nsee [sandbox](../../../glossary.md#sandbox).\n")
+    p.write_text(body + "\nsee [sandbox](../../glossary.md#sandbox).\n")
     assert decisions.main(["check"], root=built) == 0
-    p.write_text(body + "\nsee [sandbox](../../../glossary.md#sandbxo).\n")
+    p.write_text(body + "\nsee [sandbox](../../glossary.md#sandbxo).\n")
     assert decisions.main(["check"], root=built) == 1
     assert "broken anchor" in capsys.readouterr().err
 
 
 def test_intra_doc_anchor_is_validated(built, capsys):
-    p = built / "decisions/accepted/architecture/0001-alpha.md"
+    p = built / "decisions/accepted/0001-alpha.md"
     body = p.read_text() + "\n## Context\n\nsee [Context](#context).\n"
     p.write_text(body)
     assert decisions.main(["check"], root=built) == 0
@@ -851,7 +933,7 @@ def check(root, capsys):
 
 def test_a_counter_taken_upstream_by_another_file_warns(root, capsys, publish_upstream):
     branch_off(root, publish_upstream)
-    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was = root / "decisions" / "accepted" / "0002-beta.md"
     was.rename(was.with_name("0002-something-else.md"))
     decisions.main(["build", "--relink"], root=root)
     _, out = check(root, capsys)
@@ -881,9 +963,9 @@ def test_the_same_id_in_the_same_file_is_not_a_collision(root, capsys, publish_u
 
 
 def test_archiving_a_record_keeps_its_filename_and_stays_silent(root, capsys, publish_upstream):
-    """accepted/<type>/ -> archived/ moves a record without renaming it."""
+    """accepted/ -> archived/ moves a record without renaming it."""
     branch_off(root, publish_upstream)
-    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was = root / "decisions" / "accepted" / "0002-beta.md"
     place(root, "0002", "architecture", "beta", lifecycle="archived", status="superseded")
     was.unlink()
     decisions.main(["build", "--relink"], root=root)
@@ -906,7 +988,7 @@ def test_a_missing_origin_main_skips_silently(root, capsys, publish_upstream):
     subprocess.run(
         ["git", "-C", str(root.parent), "update-ref", "-d", "refs/remotes/origin/main"], check=True
     )
-    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was = root / "decisions" / "accepted" / "0002-beta.md"
     was.rename(was.with_name("0002-something-else.md"))
     decisions.main(["build", "--relink"], root=root)
     code, out = check(root, capsys)
@@ -922,7 +1004,7 @@ def test_a_tree_outside_git_skips_silently(built, capsys, tmp_path):
 def test_the_warning_does_not_change_the_exit_code(root, capsys, publish_upstream):
     """Warning and errors are independent: neither creates nor masks the other."""
     branch_off(root, publish_upstream)
-    was = root / "decisions" / "accepted" / "architecture" / "0002-beta.md"
+    was = root / "decisions" / "accepted" / "0002-beta.md"
     was.rename(was.with_name("0002-something-else.md"))  # 0003 cites 0002: links go stale
     code, out = check(root, capsys)
     assert code == 1
@@ -943,7 +1025,7 @@ def behind_main(root, publish_upstream, *, last="0004"):
     assert decisions.main(["build", "--relink"], root=root) == 0
     publish_upstream(root.parent)
     for counter in held:
-        (root / "decisions" / "accepted" / "architecture" / f"{counter}-held-{counter}.md").unlink()
+        (root / "decisions" / "accepted" / f"{counter}-held-{counter}.md").unlink()
     assert decisions.main(["build", "--relink"], root=root) == 0
     return root
 
@@ -952,8 +1034,8 @@ def test_promote_mints_past_a_counter_origin_main_holds(root, publish_upstream):
     behind_main(root, publish_upstream)
     place_draft(root, "QWER", "security", "new-idea")
     assert decisions.main(["promote", "QWER"], root=root) == 0
-    assert (root / "decisions/accepted/security/0005-new-idea.md").exists()
-    assert not (root / "decisions/accepted/security/0004-new-idea.md").exists()
+    assert (root / "decisions/accepted/0005-new-idea.md").exists()
+    assert not (root / "decisions/accepted/0004-new-idea.md").exists()
 
 
 def test_promote_says_which_counters_upstream_holds(root, capsys, publish_upstream):
@@ -978,8 +1060,8 @@ def test_co_promoted_drafts_all_start_past_upstream(root, publish_upstream):
     place_draft(root, "QWER", "security", "first")
     place_draft(root, "ZXCV", "security", "second")
     assert decisions.main(["promote", "QWER", "ZXCV"], root=root) == 0
-    assert (root / "decisions/accepted/security/0005-first.md").exists()
-    assert (root / "decisions/accepted/security/0006-second.md").exists()
+    assert (root / "decisions/accepted/0005-first.md").exists()
+    assert (root / "decisions/accepted/0006-second.md").exists()
 
 
 def test_the_counter_stepped_over_is_not_reported_as_a_gap(root, capsys, publish_upstream):
@@ -1003,7 +1085,7 @@ def test_without_the_ref_promote_mints_the_local_next(built, capsys):
     """A fresh clone or an offline machine mints exactly as it did before any of this."""
     place_draft(built, "QWER", "security", "new-idea")
     assert decisions.main(["promote", "QWER"], root=built) == 0
-    assert (built / "decisions/accepted/security/0004-new-idea.md").exists()
+    assert (built / "decisions/accepted/0004-new-idea.md").exists()
     assert "origin/main holds" not in capsys.readouterr().err
 
 
@@ -1011,5 +1093,5 @@ def test_no_note_when_origin_main_is_not_ahead(root, capsys, publish_upstream):
     branch_off(root, publish_upstream)
     place_draft(root, "QWER", "security", "new-idea")
     assert decisions.main(["promote", "QWER"], root=root) == 0
-    assert (root / "decisions/accepted/security/0004-new-idea.md").exists()
+    assert (root / "decisions/accepted/0004-new-idea.md").exists()
     assert "origin/main holds" not in capsys.readouterr().err

@@ -26,9 +26,9 @@ install it before changing any record.
 
 ## Boundaries
 
-- `accepted/<type>/` and `archived/` — the decision record. **Held firm once accepted**: changing
-  course requires supersession, never a rewrite; decider-approved maintenance edits (clarity,
-  staleness, cross-record consistency, typography) are allowed. Firm, not frozen.
+- `accepted/` and `archived/` — the decision record. **Held firm once accepted**: changing course
+  requires supersession, never a rewrite; decider-approved maintenance edits (clarity, staleness,
+  cross-record consistency, typography) are allowed. Firm, not frozen.
 - `drafts/` — work-in-progress candidates; mutable until promoted. Promotion is a finalizing step
   that needs explicit human sign-off, so never promote on your own initiative.
 - Other `docs/*.md` — living docs that may cross-reference records by ID.

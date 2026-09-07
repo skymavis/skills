@@ -6,7 +6,7 @@
 # this template is just the record's shape.
 id: "0000"                        # global counter, quoted to keep the zero-pad
 title: Short imperative title
-type: architecture                # a lowercase slug = the directory this record lives in
+type: architecture                # an open lowercase slug (architecture, product, security, …)
 status: accepted                  # accepted | deprecated | superseded
 date: YYYY-MM-DD
 deciders: [trung]

@@ -12,8 +12,7 @@ Repository layout — everything the convention owns lives under docs/decisions/
         README.md                   # human guide to the convention (scaffolded by install)
         AGENTS.md                   # agent rules: decisions are binding (scaffolded by install)
         _template.md                # decision-record template (numbered)
-        accepted/                   # ACCEPTED numbered decisions
-          architecture/  product/  security/   # one subdir per type (alphabetical)
+        accepted/                   # ACCEPTED numbered decisions — flat; `type` is front-matter
         archived/                   # RETIRED numbered decisions (superseded | deprecated) — flat
         drafts/                     # WIP candidates — flat, 4-UPPERCASE-letter ids, NOT in INDEX
           _template.md
@@ -21,8 +20,8 @@ Repository layout — everything the convention owns lives under docs/decisions/
 
 Lifecycle (there is NO "proposed" status — proposing is the *act* of opening a PR):
   decisions/drafts/<AAAA-title>.md
-    --(promote: a PR assigns the next counter)--> decisions/accepted/<type>/NNNN-title.md (accepted)
-  decisions/accepted/<type>/NNNN   --(supersede/deprecate)-->  decisions/archived/NNNN-title.md
+    --(promote: a PR assigns the next counter)--> decisions/accepted/NNNN-title.md (accepted)
+  decisions/accepted/NNNN   --(supersede/deprecate)-->  decisions/archived/NNNN-title.md
 
 Conventions this tool encodes and enforces:
   * Identity is the global counter ID (`0001`, …) for decisions; a 4-UPPERCASE-letter
@@ -32,9 +31,11 @@ Conventions this tool encodes and enforces:
     and stay green until they meet. `check` therefore also reads `origin/main` and warns
     (never fails) when an ID there already names a different file. Read-only, never
     fetches, silent when the ref is not on disk — see `warn_upstream_collisions`.
-  * `type` is any lowercase slug — the set is OPEN; your accepted/<type>/ subdirs are the
-    suggested set (architecture/product/security, or policy/legal/finance for governance).
-    It lives in front-matter and, for a decision, equals its directory. `status` -> lifecycle.
+  * `type` is any lowercase slug — the set is OPEN (architecture/product/security, or
+    policy/legal/finance for governance). It lives in front-matter only — the lifecycle
+    dirs are flat — and the set in use is whatever the accepted records carry; the INDEX
+    groups by it. `status` -> lifecycle. Repos on the old accepted/<type>/ layout run
+    `migrate-layout` once (see `migrate_layout`).
   * Cross-reference by writing the bare ID as inline code — `0006` or `CONF`. NEVER
     hand-author a path. `build --relink` rewrites every such ID (in every docs/*.md —
     records, drafts, and other docs) into a correct relative link and self-heals on moves.
@@ -45,7 +46,7 @@ Conventions this tool encodes and enforces:
   * INDEX.md and every path link are GENERATED build artifacts.
   * A record's H1 reads `# NNNN — <title>`; a title carrying its own em-dash renders it as
     a colon. `promote` carries the new ID into the heading, re-paths every hand-authored
-    relative link for the extra directory level, and retires the mnemonic from prose. It
+    relative link for the drafts/ -> accepted/ move, and retires the mnemonic from prose. It
     edits nothing outside docs/ and nothing inside code — a 4-letter mnemonic doubles as a
     plausible identifier — and lists what it left for a human instead.
 
@@ -58,6 +59,7 @@ Dependency-free (no PyYAML). Usage (a bare invocation = `build`; draft IDs are 4
                                                                # the order given -> accepted/
     python scripts/decisions.py promote CONF --deref           # invert refs, promote alone
     python scripts/decisions.py promote CONF --allow-replace   # also archive what it supersedes
+    python scripts/decisions.py migrate-layout                 # one-shot: accepted/<type>/ -> flat
     python scripts/decisions.py install [repo]                 # adopt: symlink + scaffold + check
 """
 
@@ -83,9 +85,9 @@ def find_docs(start: Path | None = None) -> Path:
     return Path(__file__).resolve().parent.parent / "docs"
 
 
-# A type is any lowercase slug — the set is OPEN. The repo's accepted/<type>/ subdirs are
-# the suggested set (e.g. architecture, product, security; or policy, legal, finance,
-# people, compliance, operations for governance repos). New types create their dir on promotion.
+# A type is any lowercase slug — the set is OPEN (e.g. architecture, product, security;
+# or policy, legal, finance, people, compliance, operations for governance repos). It
+# lives in front-matter only; the set in use is whatever the accepted records carry.
 TYPE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 ACTIVE_STATUS = {"accepted"}  # -> decisions/accepted/
 RETIRED_STATUS = {"superseded", "deprecated"}  # -> decisions/archived/
@@ -363,16 +365,19 @@ def _meta(p: Path, **extra) -> dict:
 
 
 def load_records(root: Path) -> list[dict]:
-    """Numbered records: accepted/<type>/*.md (typed) and archived/*.md (flat)."""
+    """Numbered records: accepted/*.md and archived/*.md, both flat. The rglob still
+    reads records nested in old accepted/<type>/ subdirs — `_nested` marks those so
+    `check` can point at `migrate-layout` instead of failing blind."""
     recs = []
-    for p in sorted(accepted_dir(root).rglob("*.md")):
+    base = accepted_dir(root)
+    for p in sorted(base.rglob("*.md")):
         if RECORD_RE.match(p.name):
-            recs.append(_meta(p, _lifecycle="decisions", _typedir=p.parent.name))
+            recs.append(_meta(p, _lifecycle="decisions", _nested=p.parent != base))
     base = archived_dir(root)
     if base.exists():
         for p in sorted(base.glob("*.md")):
             if RECORD_RE.match(p.name):
-                recs.append(_meta(p, _lifecycle="archived", _typedir=None))
+                recs.append(_meta(p, _lifecycle="archived", _nested=False))
     return recs
 
 
@@ -509,9 +514,10 @@ def validate_records(recs: list[dict], refs: dict, held_upstream: dict | None = 
         if r["_lifecycle"] == "decisions":
             if not TYPE_RE.match(str(r.get("type") or "")):
                 errs.append(f"{r['_file']}: type {r.get('type')!r} must be a lowercase slug")
-            elif r["_typedir"] != r.get("type"):
+            if r["_nested"]:
                 errs.append(
-                    f"{r['_file']}: in accepted/{r['_typedir']}/ but type is {r.get('type')}"
+                    f"{r['_file']}: nested in accepted/{r['_path'].parent.name}/ — accepted/ is"
+                    " flat now; run scripts/decisions.py migrate-layout"
                 )
             if r.get("status") not in ACTIVE_STATUS:
                 errs.append(
@@ -555,14 +561,13 @@ def validate_drafts(root: Path, refs: dict, drafts: list[dict]) -> list[str]:
     return errs
 
 
-def warn_unknown_types(root: Path, drafts: list[dict]) -> list[str]:
-    """Non-blocking: a draft whose type has no accepted/<type>/ dir yet — likely a typo,
-    or a deliberately new type (its dir is created on promotion)."""
-    base = accepted_dir(root)
-    known = {p.name for p in base.iterdir() if p.is_dir()} if base.exists() else set()
+def warn_unknown_types(recs: list[dict], drafts: list[dict]) -> list[str]:
+    """Non-blocking: a draft whose type no accepted record carries yet — likely a typo,
+    or a deliberately new type (the set is open; front-matter is the registry)."""
+    known = {r.get("type") for r in recs if r["_lifecycle"] == "decisions"}
     return [
-        f"WARN drafts/{d['_file']}: new type {d['type']!r} — no accepted/{d['type']}/ yet "
-        "(typo? otherwise it's created on promotion)"
+        f"WARN drafts/{d['_file']}: new type {d['type']!r} — no accepted decision carries it yet "
+        "(typo? otherwise fine — the set is open)"
         for d in drafts
         if TYPE_RE.match(str(d.get("type") or "")) and d.get("type") not in known
     ]
@@ -771,9 +776,9 @@ supersession; decider-approved maintenance edits are allowed.
 - Reference by ID. Path links — each ID rendered as a markdown link to its file — are
   **generated** by `scripts/decisions.py build --relink` and refreshed on every move,
   so they stay correct; never **hand-author** a path.
-- `type` is an open lowercase slug — the `accepted/<type>/` subdirs are the set (e.g.
-  architecture, product, security; or policy, legal, finance). For a decision it equals its
-  directory and `status` selects the lifecycle dir; the tool enforces placement, not a fixed list.
+- `type` is an open lowercase slug (e.g. architecture, product, security; or policy,
+  legal, finance) recorded in front-matter — the set in use is whatever the accepted
+  records carry, and this table groups by it. `status` selects the lifecycle dir.
 
 ## Status: 🟢 accepted · ⚪ deprecated · 🔵 superseded
 
@@ -784,7 +789,7 @@ supersession; decider-approved maintenance edits are allowed.
 ## Layout
 Everything lives under `docs/decisions/`:
 
-- `accepted/<type>/`: accepted numbered records, one subdir per type.
+- `accepted/`: accepted numbered records, flat — `type` lives in front-matter.
 - `archived/`: retired records (`superseded`/`deprecated`), flat.
 - `drafts/`: 4-letter WIP candidates, flat and not indexed.
 
@@ -836,10 +841,11 @@ def retitle_heading(text: str, old_id: str, new_id: str, title: str = "") -> tup
 
 def repath_links(text: str, old_dir: Path, new_dir: Path) -> str:
     """Re-express the body's hand-authored relative links so they resolve from `new_dir`.
-    Promotion moves a record a directory deeper (drafts/ -> accepted/<type>/), so every
-    path a human wrote — `../../glossary.md`, a research memo, a repo-root script — needs
-    another `../`. ID links are regenerated by `build --relink`; these never were, and
-    promotion used to leave them one level short."""
+    Promotion moves a record between sibling dirs (drafts/ -> accepted/), so same-depth
+    paths survive, but a path INTO the old dir — `AAAA-sibling.md` naming a fellow
+    draft — still needs re-expressing (`../drafts/AAAA-sibling.md`). ID links are
+    regenerated by `build --relink`; these never were, and promotion used to leave
+    them dangling."""
     head, body = split_front_matter(text)
     spans = code_regions(body)
 
@@ -1168,7 +1174,7 @@ def promote(
     for did, nid in mapping.items():
         d = by_id[did]
         slug = re.sub(r"^[A-Z]{4}-", "", d["_path"].stem)
-        dest = accepted_dir(root) / d["type"] / f"{nid}-{slug}.md"
+        dest = accepted_dir(root) / f"{nid}-{slug}.md"
         text = set_field(d["_text"], "id", f'"{nid}"')
         text = set_field(text, "status", "accepted")  # the PR proposes; merge accepts
         for f in ("change_kind", "author"):  # draft-only fields
@@ -1176,7 +1182,7 @@ def promote(
         text, note = retitle_heading(text, did, nid, str(d.get("title") or ""))
         if note:
             print(f"{dest.name}: {note}", file=sys.stderr)
-        text = repath_links(text, d["_path"].parent, dest.parent)  # accepted/ sits a level deeper
+        text = repath_links(text, d["_path"].parent, dest.parent)  # drafts/ -> its sibling dir
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(text, encoding="utf-8")
         moved.append((d["_path"], dest))
@@ -1277,6 +1283,83 @@ def rename_draft(
     rewrite_reference(root, old, new)
     report_residual_mnemonics(root, old, new)
     return dest, None
+
+
+def _retarget_links(root: Path, moved: dict[str, Path]) -> None:
+    """Repoint relative links whose TARGET is a moved record — the class neither pass
+    above reaches: `build --relink` regenerates only ID-labelled links, and
+    `rewrite_path` only exact docs-relative spellings. A hand-authored
+    `[defense](../accepted/security/0008-x.md)` violates the reference-by-ID rule, but
+    breaking it silently is worse than carrying it; `moved` maps each record's old
+    normalized absolute path to its new file."""
+    for p in _md_files(root):
+        t = p.read_text(encoding="utf-8")
+        head, body = split_front_matter(t)
+        spans = code_regions(body)
+
+        def fix(m: re.Match, _dir: Path = p.parent) -> str:
+            label, target = m.group(1), m.group(2).strip()
+            path, sep, frag = target.partition("#")
+            if not path or path.startswith("/") or re.match(r"[a-z][a-z0-9+.-]*:", path):
+                return m.group(0)
+            if "…" in target or " " in path:
+                return m.group(0)
+            hit = moved.get(os.path.normpath(str(_dir / path)))
+            if hit is None:
+                return m.group(0)
+            new_target = rel(hit, _dir) + sep + frag
+            if label.strip().strip("`") == target:  # a link labelled with its own path
+                label = label.replace(target, new_target)
+            return f"[{label}]({new_target})"
+
+        body = sub_outside(LINK_RE, fix, body, spans, group=2)
+        if head + body != t:
+            p.write_text(head + body, encoding="utf-8")
+
+
+def migrate_layout(root: Path) -> int:
+    """One-shot: flatten the old accepted/<type>/ layout into accepted/. Filenames — the
+    identity — never change, so inbound ID links only need the `build --relink` this ends
+    with, and the upstream-collision check stays silent across the move (same ID, same
+    filename). Hand-authored relative links in the moved records are re-pathed one level
+    up and spelled-out paths in prose are repointed — both the way `promote` does it.
+    Idempotent: a flat tree is a no-op."""
+    base = accepted_dir(root)
+    nested = [p for p in sorted(base.rglob("*.md")) if RECORD_RE.match(p.name) and p.parent != base]
+    if not nested:
+        print("accepted/ is already flat — nothing to migrate")
+        return 0
+    seen: set[str] = set()
+    clashes: list[Path] = []
+    for src in nested:
+        if (base / src.name).exists() or src.name in seen:
+            clashes.append(src)
+        seen.add(src.name)
+    if clashes:  # refuse BEFORE moving anything — no half-migrated tree
+        for src in clashes:
+            print(
+                f"refusing: accepted/{src.name} exists more than once — resolve the duplicate "
+                "counter first, then re-run",
+                file=sys.stderr,
+            )
+        return 1
+    retarget = {os.path.normpath(str(src)): base / src.name for src in nested}
+    for src in nested:
+        dest = base / src.name
+        text = repath_links(src.read_text(encoding="utf-8"), src.parent, base)
+        dest.write_text(text, encoding="utf-8")
+        src.unlink()
+        rewrite_path(root, src, dest)
+        print(f"moved accepted/{src.relative_to(base)} -> accepted/{dest.name}")
+    _retarget_links(root, retarget)
+    for d in sorted({p.parent for p in nested}, reverse=True):
+        try:
+            d.rmdir()
+        except OSError:  # something besides records still lives there — a human call
+            print(
+                f"note: accepted/{d.relative_to(base)}/ not empty — left in place", file=sys.stderr
+            )
+    return main(["build", "--relink"], root=root)
 
 
 def ensure_gitignored(repo: Path, pattern: str) -> None:
@@ -1386,7 +1469,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         prog="decisions.py",
         description="Decision-records registry: build the INDEX, validate, rename/promote drafts.",
     )
-    sub = p.add_subparsers(dest="cmd", metavar="{build,check,rename-draft-id,promote,install}")
+    sub = p.add_subparsers(
+        dest="cmd", metavar="{build,check,rename-draft-id,promote,migrate-layout,install}"
+    )
     build = sub.add_parser(
         "build", help="write docs/decisions/INDEX.md (optionally relink everything)"
     )
@@ -1419,9 +1504,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="confirm archiving any decisions this promotion supersedes",
     )
+    sub.add_parser(
+        "migrate-layout", help="one-shot: flatten the old accepted/<type>/ layout into accepted/"
+    )
     ins = sub.add_parser("install", help="symlink the tool into a repo + add a pre-commit check")
     ins.add_argument("repo", nargs="?", default=".", help="repo root (default: current dir)")
-    known = ("build", "check", "rename-draft-id", "promote", "install", "-h", "--help")
+    known = (
+        "build", "check", "rename-draft-id", "promote", "migrate-layout", "install", "-h", "--help",
+    )  # fmt: skip
     if not raw or raw[0] not in known:
         raw = ["build"] + raw
     return p.parse_args(raw)
@@ -1434,6 +1524,9 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
         return 0
     root = root or find_docs()
     index = index_path(root)
+
+    if args.cmd == "migrate-layout":
+        return migrate_layout(root)
 
     if args.cmd == "rename-draft-id":
         dest, err = rename_draft(root, args.query, args.new)
@@ -1458,7 +1551,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     recs = load_records(root)
     drafts = load_drafts(root)
     refs = ref_map(recs, drafts)
-    for w in warn_unknown_types(root, drafts):  # non-blocking: typo / new-type heads-up
+    for w in warn_unknown_types(recs, drafts):  # non-blocking: typo / new-type heads-up
         print(w, file=sys.stderr)
     upstream = upstream_ids(root)  # ({}, {}) when origin/main is not on disk
     for w in warn_upstream_collisions(local_ids(root), upstream):  # non-blocking
