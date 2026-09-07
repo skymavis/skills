@@ -4,8 +4,8 @@ description: >-
   Draft, promote, archive, and supersede ADR-style decision records (types are open: architecture,
   product, security, policy, legal, …) and keep INDEX.md and cross-links generated, via the bundled
   scripts/decisions.py tool. Use when creating or promoting decision drafts, superseding or
-  archiving a decision, fixing a promotion breach, or running build, check, promote,
-  rename-draft-id, or install.
+  archiving a decision, fixing a promotion breach, flattening the old per-type accepted/ layout,
+  or running build, check, promote, rename-draft-id, migrate-layout, or install.
 ---
 
 # Decision records
@@ -19,6 +19,7 @@ python scripts/decisions.py build [--relink]            # regenerate INDEX.md (+
 python scripts/decisions.py check                       # validate (CI-safe; exit 1 if stale)
 python scripts/decisions.py promote <name…> [--deref] [--allow-replace]   # draft(s) -> accepted/
 python scripts/decisions.py rename-draft-id <name> <NEW>                  # re-ID a draft
+python scripts/decisions.py migrate-layout              # one-shot: old accepted/<type>/ -> flat
 python scripts/decisions.py install [repo]              # adopt in a repo: symlink + pre-commit
 ```
 
@@ -32,22 +33,25 @@ docs/
     INDEX.md              # GENERATED registry over accepted/ + archived/
     README.md             # human guide to the convention (scaffolded by install)
     AGENTS.md             # agent rules: decisions are binding here (scaffolded by install)
-    accepted/<type>/      # ACCEPTED numbered records; <type> = any lowercase slug you define
+    accepted/             # ACCEPTED numbered records — flat; `type` lives in front-matter
     archived/             # RETIRED records (superseded | deprecated) — flat
     drafts/               # WIP candidates — flat, 4-UPPERCASE-letter IDs, NOT in INDEX
   threat-model.md         # other repo docs stay siblings — still cross-reference decisions
 ```
 
-| Stage           | Dir                | ID                                     | Status                      |
-| :-------------- | :----------------- | :------------------------------------- | :-------------------------- |
-| candidate (WIP) | `drafts/`          | 4 UPPERCASE letters, mnemonic (`CONF`) | `draft`                     |
-| decision        | `accepted/<type>/` | global counter (`0001`…)               | `accepted`                  |
-| retired         | `archived/`        | (keeps its counter)                    | `superseded` / `deprecated` |
+| Stage           | Dir         | ID                                     | Status                      |
+| :-------------- | :---------- | :------------------------------------- | :-------------------------- |
+| candidate (WIP) | `drafts/`   | 4 UPPERCASE letters, mnemonic (`CONF`) | `draft`                     |
+| decision        | `accepted/` | global counter (`0001`…)               | `accepted`                  |
+| retired         | `archived/` | (keeps its counter)                    | `superseded` / `deprecated` |
 
-**Types are open** — `<type>` is any lowercase slug, and your `accepted/<type>/` subdirs are the set
-(software: `architecture`, `product`, `security`; governance: `policy`, `legal`, `finance`,
-`people`, `compliance`, `operations`). A new type's directory is created on promotion. The tool
-enforces that a decision sits in the subdir matching its `type` — not a fixed list.
+**Types are open** — `type` is any lowercase slug (software: `architecture`, `product`, `security`;
+governance: `policy`, `legal`, `finance`, `people`, `compliance`, `operations`). It lives in
+front-matter only — every lifecycle dir is flat — and the set in use is whatever the accepted
+records carry; the INDEX groups by it. A repo still on the old `accepted/<type>/` layout runs
+`python scripts/decisions.py migrate-layout` once: filenames (the identity) survive the move, so the
+ending `build --relink` self-heals every reference, and `check` points here whenever it finds a
+nested record.
 
 There is no `proposed` status — "proposing" is the act of opening a PR that promotes a draft. Mint a
 draft ID yourself (a mnemonic of the topic); `check` enforces format + uniqueness. Cross-reference
@@ -84,11 +88,11 @@ copy-paste prompt. Before any promotion the tool refuses — or any supersession
 **[references/promotion.md](references/promotion.md)** for the mechanics.
 
 Promotion changes a record's ID *and* its directory, and `promote` carries both through the tree:
-the H1, every relative link (one level deeper now), the mnemonic in prose, and any spelled-out path
-to the draft file. It stops at `docs/`, and it never edits code — a 4-letter mnemonic also reads as
-an identifier. Mentions outside `docs/` are **listed** after the run for you to work through by
-hand; leave any identifier that merely shares the name. `mdformat` reflows the rewritten paragraphs
-on commit.
+the H1, every relative link (drafts/ and accepted/ are siblings), the mnemonic in prose, and any
+spelled-out path to the draft file. It stops at `docs/`, and it never edits code — a 4-letter
+mnemonic also reads as an identifier. Mentions outside `docs/` are **listed** after the run for you
+to work through by hand; leave any identifier that merely shares the name. `mdformat` reflows the
+rewritten paragraphs on commit.
 
 ## Adopting this in a repo
 

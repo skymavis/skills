@@ -22,18 +22,18 @@ Promoting and superseding finalize a record, so the agent confirms with you firs
 
 A decision moves through three stages, one directory each:
 
-| Stage    | Directory          | Identified by                         | Meaning                                       |
-| :------- | :----------------- | :------------------------------------ | :-------------------------------------------- |
-| Draft    | `drafts/`          | a 4-uppercase-letter mnemonic (CONF)  | a work-in-progress candidate; edit freely     |
-| Accepted | `accepted/<type>/` | a zero-padded counter (0001, 0002, …) | a finalized decision, **held firm**           |
-| Retired  | `archived/`        | (keeps its counter)                   | superseded or deprecated; kept for the record |
+| Stage    | Directory   | Identified by                         | Meaning                                       |
+| :------- | :---------- | :------------------------------------ | :-------------------------------------------- |
+| Draft    | `drafts/`   | a 4-uppercase-letter mnemonic (CONF)  | a work-in-progress candidate; edit freely     |
+| Accepted | `accepted/` | a zero-padded counter (0001, 0002, …) | a finalized decision, **held firm**           |
+| Retired  | `archived/` | (keeps its counter)                   | superseded or deprecated; kept for the record |
 
 There is no "proposed" stage — *proposing* a decision is the act of opening a pull request that
 promotes a draft. Once a draft lands in `accepted/` it is held firm: changing course means
 superseding it with a newer decision, never rewriting it; decider-approved maintenance edits
-(clarity, staleness, consistency) are allowed. `<type>` is an open lowercase label you choose
-(architecture, product, security, policy, legal, …); each type is its own subdirectory under
-`accepted/`.
+(clarity, staleness, consistency) are allowed. `type` is an open lowercase label you choose
+(architecture, product, security, policy, legal, …); it lives in the record's front-matter, and the
+index groups by it.
 
 ## Reading the records
 

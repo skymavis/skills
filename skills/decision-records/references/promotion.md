@@ -43,9 +43,9 @@ so a promoted record needs no hand-correction before commit:
 | Rewritten                                            | From → to                                                                          |
 | :--------------------------------------------------- | :--------------------------------------------------------------------------------- |
 | the H1                                               | `# CONF — <title>` → `# 0016 — <title>` (every accepted record reads `# NNNN — …`) |
-| every relative link in the body                      | re-pathed for the extra level (`../../glossary.md` → `../../../glossary.md`)       |
+| every relative link in the body                      | re-pathed for the sibling move (`AAAA-peer.md` → `../drafts/AAAA-peer.md`)         |
 | the mnemonic in prose — its own and every referrer's | `CONF` → `0016`, in the body and in front-matter prose like `summary`              |
-| a spelled-out path to the draft file                 | `docs/decisions/drafts/CONF-x.md` → `docs/decisions/accepted/<type>/0016-x.md`     |
+| a spelled-out path to the draft file                 | `docs/decisions/drafts/CONF-x.md` → `docs/decisions/accepted/0016-x.md`            |
 
 Two deliberate exclusions, both because a 4-letter mnemonic also reads as a plausible identifier:
 
