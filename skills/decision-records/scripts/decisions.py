@@ -722,6 +722,34 @@ def draft_references(d: dict, draft_ids: set) -> set:
     return (refs | body_ref_ids(d["_text"])) & draft_ids
 
 
+def warn_stale_citations(root: Path, recs: list[dict], drafts: list[dict]) -> list[str]:
+    """Non-blocking: a living doc citing a record that has since been superseded. The
+    successor is what makes this actionable — most such cites should move to it — but a
+    mention can also be deliberately historical, which is why this warns and never fails.
+    Archived records are frozen history and cite what they like; the record that
+    supersedes the old one may of course name it."""
+    successor = {r["id"]: r["superseded_by"] for r in recs if r.get("superseded_by")}
+    if not successor:
+        return []
+    by_path = {r["_path"]: r for r in recs}
+    by_path.update({d["_path"]: d for d in drafts})
+    out = []
+    for path, own in reference_targets(root, recs, drafts):
+        if archived_dir(root) in path.parents:
+            continue
+        meta = by_path.get(path, {})
+        text = meta.get("_text") or path.read_text(encoding="utf-8")
+        cites = body_ref_ids(text) | set(meta.get("relates_to") or [])
+        for old in sorted(cites & set(successor)):
+            if old == own or meta.get("supersedes") == old:
+                continue
+            out.append(
+                f"WARN {path.name}: cites {old}, which {successor[old]} superseded — cite "
+                f"{successor[old]}, or leave it only where the mention is deliberately historical"
+            )
+    return out
+
+
 def validate_no_breach(recs: list[dict], drafts: list[dict]) -> list[str]:
     """An accepted/retired decision must NOT reference a draft — that would bind a
     finalized record to unfinalized WIP. Promote the draft first."""
@@ -1550,6 +1578,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     drafts = load_drafts(root)
     refs = ref_map(recs, drafts)
     for w in warn_unknown_types(recs, drafts):  # non-blocking: typo / new-type heads-up
+        print(w, file=sys.stderr)
+    for w in warn_stale_citations(root, recs, drafts):  # non-blocking: superseded cites
         print(w, file=sys.stderr)
     upstream = upstream_ids(root)  # ({}, {}) when origin/main is not on disk
     for w in warn_upstream_collisions(local_ids(root), upstream):  # non-blocking

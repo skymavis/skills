@@ -72,6 +72,13 @@ leaves is not a gap: `check` reads a counter `origin/main` holds as held rather 
 the rebase closes the sequence. A number neither tree has still fails, and with no ref on disk both
 behave exactly as they did before.
 
+**A citation of a superseded record is warned about, not gated.** Supersession retires a record, but
+nothing used to re-read the docs that cite it: a rulebook resting on `0007` kept resting on it after
+`0019` replaced it. `check` (and `build`) print a `WARN` naming the successor for every such cite in
+a living doc. It never fails the run, because a mention can be deliberately historical; archived
+records are frozen history and cite what they like, and the record that supersedes an old one may of
+course name it.
+
 ## Authoring
 
 Copy `drafts/_template.md` — the only template. A record is born a draft, and `promote` is the only
