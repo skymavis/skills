@@ -91,7 +91,9 @@ Write the ruling, not the debate:
   carries the decision, the live rationale, and pointers under References.
 - **Delete a section with nothing to say.** A Rationale that repeats the Decision, an unargued
   alternatives table, a padded consequences list — deletion beats padding, and the template marks
-  which sections may go.
+  which sections may go. `check` reads the same marks: a draft missing a section the template does
+  not mark deletable fails, since a scripted edit that eats a whole section leaves no other trace.
+  The template is your repo's own copy, so the marks are yours to move.
 - **Every sentence earns its place.** A flat sentence that states the fact beats a paragraph that
   performs it; one flourish is a voice, a flourish per paragraph is a tell.
 - **One decision per record.** A record that keeps growing is usually several rulings sharing a file

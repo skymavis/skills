@@ -204,6 +204,97 @@ def test_draft_duplicate_id(built):
     assert decisions.main(["check"], root=built) == 1
 
 
+# ── drafts: every required template section is still there ─────────────────
+TEMPLATE = """---
+id: ABCD
+title: Short imperative title
+---
+
+# {id} — {title}
+
+## Context
+
+The tension that forces a decision.
+
+## Decision
+
+The decision in one or two sentences.
+
+## Alternatives considered
+
+Only options genuinely argued. Delete
+the section when nothing else was on the table.
+
+## Consequences
+
+What this makes better, worse, or riskier.
+"""
+
+COMPLETE = "## Context\n\nwhy\n\n## Decision\n\nwhat\n\n## Consequences\n\nso\n"
+
+
+def place_template(root, text=TEMPLATE):
+    d = root / "decisions" / "drafts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "_template.md").write_text(text, encoding="utf-8")
+
+
+def test_required_sections_are_read_from_the_repo_template(root):
+    """Optional means the template says so under the heading — across a wrapped line,
+    since a formatter may reflow the sentence — and the rest are required."""
+    place_template(root)
+    assert decisions.required_sections(root) == ["Context", "Decision", "Consequences"]
+
+
+def test_draft_missing_a_required_section_is_rejected(built, capsys):
+    place_template(built)
+    place_draft(
+        built, "ABCD", "security", "lost", body="## Context\n\nwhy\n\n## Decision\n\nwhat\n"
+    )
+    assert decisions.main(["check"], root=built) == 1
+    assert (
+        "drafts/ABCD-lost.md: missing template section — '## Consequences'"
+        in capsys.readouterr().err
+    )
+
+
+def test_draft_missing_several_sections_names_them_in_template_order(built, capsys):
+    place_template(built)
+    place_draft(built, "ABCD", "security", "bare", body="## Decision\n\nwhat\n")
+    assert decisions.main(["check"], root=built) == 1
+    assert "missing template sections — '## Context', '## Consequences'" in capsys.readouterr().err
+
+
+def test_draft_may_omit_a_section_the_template_lets_go(built):
+    place_template(built)
+    place_draft(built, "ABCD", "security", "lean", body=COMPLETE)  # no Alternatives considered
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_draft_may_add_sections_of_its_own(built):
+    place_template(built)
+    place_draft(built, "ABCD", "security", "more", body=COMPLETE + "\n## Appendix\n\nextra\n")
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_accepted_records_are_not_held_to_the_template(built):
+    """The `root` fixture's records have no sections at all; frozen as promoted."""
+    place_template(built)
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_section_check_skips_without_a_template(built):
+    place_draft(built, "ABCD", "security", "bare", body="## Decision\n\nwhat\n")
+    assert decisions.main(["check"], root=built) == 0
+
+
+def test_a_repo_makes_a_section_required_by_deleting_the_sentence(root):
+    place_template(
+        root, TEMPLATE.replace("Delete\nthe section when nothing else was on the table.", "")
+    )
+    assert "Alternatives considered" in decisions.required_sections(root)
+
+
 # ── threat-model.md in the link system ──────────────────────────────────────
 def test_threat_model_gets_linked(built):
     write_threat_model(built, "Vector X addressed by `0001`.")

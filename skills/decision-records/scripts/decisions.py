@@ -42,6 +42,11 @@ Conventions this tool encodes and enforces:
     promotes a whole reference-closure together and refuses a set that would breach.
     Co-promoted drafts take their counters in the order the arguments were given, so the
     record the others build on can be named first and read as the earlier decision.
+  * A draft still carries every `## ` section its repo's `drafts/_template.md` requires.
+    The template is the repo's own — `install` seeds it once and never overwrites — and
+    it says which of its sections may go: one whose body says "Delete the section" is
+    optional, the rest are required. Accepted records are frozen as promoted and never
+    held to a template that may have moved since; `check` reads drafts only.
   * INDEX.md and every path link are GENERATED build artifacts.
   * A record's H1 reads `# NNNN — <title>`; a title carrying its own em-dash renders it as
     a colon. `promote` carries the new ID into the heading, re-paths every hand-authored
@@ -98,6 +103,12 @@ DRAFT_ID_RE = re.compile(r"^[A-Z]{4}$")  # 4-uppercase-letter draft ID
 # An inline-code ID — a counter (`0006`) or a draft tag (`CONF`) — not already linked.
 ID_RE = re.compile(r"(?<!\[)`(\d{4}|[A-Z]{4})`")
 COUNTER_RE = re.compile(r"(?<!\[)`(\d{4})`")  # numeric-only, for prose validation
+# A `## ` heading at column 0, and the sentence the template writes under a section an
+# author may delete. The phrase is the template's own convention, not this tool's: a
+# repo that wants a section required removes the sentence from its copy of the template.
+SECTION_RE = re.compile(r"^## +(\S.*?)\s*$", re.M)
+# Whitespace, not a space: a formatter may wrap the sentence anywhere.
+OPTIONAL_RE = re.compile(r"\bDelete\s+(?:the|this)\s+section\b")
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 LABEL_ID_RE = re.compile(r"`?(\d{4}|[A-Z]{4})`?$")  # link label that is just an ID
 FILE_ID_RE = re.compile(r"^(\d{4}|[A-Z]{4})-")  # leading ID in a filename
@@ -557,6 +568,43 @@ def validate_drafts(root: Path, refs: dict, drafts: list[dict]) -> list[str]:
         for ref in (d.get("relates_to") or []) + [d.get("supersedes"), d.get("superseded_by")]:
             if ref and ref not in refs:
                 errs.append(f"drafts/{d['_file']}: references unknown ID {ref}")
+    return errs
+
+
+def required_sections(root: Path) -> list[str] | None:
+    """The `## ` headings drafts/_template.md requires, in template order — every section
+    whose template body does not say the section may be deleted. `None` when the repo
+    has no template, which skips the check: a tree may predate it, and the synthetic
+    trees the tests build carry only the records under test."""
+    template = drafts_dir(root) / "_template.md"
+    if not template.is_file():
+        return None
+    _, body = split_front_matter(template.read_text(encoding="utf-8"))
+    heads = list(SECTION_RE.finditer(body))
+    required = []
+    for i, m in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(body)
+        if not OPTIONAL_RE.search(body[m.end() : end]):
+            required.append(m.group(1))
+    return required
+
+
+def validate_sections(root: Path, drafts: list[dict]) -> list[str]:
+    """A draft that has lost a required section — the failure a scripted edit produces
+    and a reading pass is the only other thing that catches. Presence only, never
+    placement or order: a draft may add sections of its own."""
+    required = required_sections(root)
+    if not required:
+        return []
+    errs = []
+    for d in drafts:
+        _, body = split_front_matter(d["_text"])
+        present = set(SECTION_RE.findall(body))
+        gone = [s for s in required if s not in present]
+        if gone:
+            plural = "s" if len(gone) > 1 else ""
+            named = ", ".join(f"'## {s}'" for s in gone)
+            errs.append(f"drafts/{d['_file']}: missing template section{plural} — {named}")
     return errs
 
 
@@ -1593,6 +1641,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
         problems += validate_no_breach(recs, drafts)
         problems += check_links(root, recs, drafts, refs)
         problems += validate_drafts(root, refs, drafts)
+        problems += validate_sections(root, drafts)
         problems += prose_unknown_counters(root, recs, drafts, refs)
         current = index.read_text(encoding="utf-8") if index.exists() else ""
         if current.strip() != out.strip():
